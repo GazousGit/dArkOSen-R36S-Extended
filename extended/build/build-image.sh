@@ -145,7 +145,7 @@ if [ -z "$IMG" ]; then
         *.img)         mv "$WORK/dl/$FIRST" "$WORK/img/" ;;
         *)             die "do not know how to unpack $FIRST" ;;
     esac
-    IMG=$(find "$WORK/img" -maxdepth 3 -type f -iname '*.img' -printf '%s %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+    IMG=$(find "$WORK/img" -maxdepth 3 -type f -iname '*.img' -printf '%s %p\n' | sort -nr | sed -n '1p' | cut -d' ' -f2-)
     [ -n "$IMG" ] || die "no .img file inside $FIRST"
     rm -rf "$WORK/dl"
 else
@@ -212,7 +212,10 @@ log "root filesystem mounted, $(human $((ROOT_FREE * 1024))) free"
 
 bash "$INJECT" "$MNT" "$VIDEOS" "$TAG"
 STAMP=$(cat "$MNT/etc/dArkOSen-Extended.release")
-SHIPPED=$(ls "$MNT/usr/share/dArkOSen-Extended/bootvideos" 2>/dev/null | wc -l)
+SHIPPED=0
+if [ -d "$MNT/usr/share/dArkOSen-Extended/bootvideos" ]; then
+    SHIPPED=$(find "$MNT/usr/share/dArkOSen-Extended/bootvideos" -maxdepth 1 -type f | wc -l)
+fi
 
 sync
 umount "$MNT"
