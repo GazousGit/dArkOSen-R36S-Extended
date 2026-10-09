@@ -117,6 +117,15 @@ if [ -z "$IMG" ]; then
         | "\(.name)\t\(.browser_download_url)\t\(.size)"' <<<"$REL" | sort)
     [ ${#ASSETS[@]} -gt 0 ] || die "release $TAG has no image assets"
 
+    # Rough space check: archive parts + extracted image (~3x) + repacked archive
+    TOTAL=0
+    for a in "${ASSETS[@]}"; do IFS=$'\t' read -r _ _ asize <<<"$a"; TOTAL=$((TOTAL + asize)); done
+    NEED=$((TOTAL * 5))
+    FREE=$(( $(df --output=avail -k "$WORK" | tail -1 | tr -d ' ') * 1024 ))
+    log "assets: $(human "$TOTAL"); need about $(human "$NEED"), have $(human "$FREE") in $WORK"
+    [ "$FREE" -gt "$NEED" ] || die "not enough free space in $WORK (need about $(human "$NEED"))"
+    log "7z: $("$SEVENZ" 2>/dev/null | sed -n '2p' | cut -c1-60)"
+
     for a in "${ASSETS[@]}"; do
         IFS=$'\t' read -r aname aurl asize <<<"$a"
         log "download $aname ($(human "$asize"))"
@@ -126,9 +135,10 @@ if [ -z "$IMG" ]; then
     done
 
     IFS=$'\t' read -r FIRST _ _ <<<"${ASSETS[0]}"
-    log "extract $FIRST"
+    log "extract $FIRST ($(df -h --output=avail "$WORK" | tail -1 | tr -d ' ') free)"
     case "$FIRST" in
-        *.7z|*.7z.001) "$SEVENZ" x -y -bd -bb0 -o"$WORK/img" "$WORK/dl/$FIRST" >/dev/null ;;
+        *.7z|*.7z.001) "$SEVENZ" x -y -bd -bb0 -o"$WORK/img" "$WORK/dl/$FIRST" > "$WORK/7z-extract.log" 2>&1 \
+                           || { rc=$?; tail -n 15 "$WORK/7z-extract.log"; df -h "$WORK"; die "7z extraction failed (exit $rc)"; } ;;
         *.zip)         unzip -o -q "$WORK/dl/$FIRST" -d "$WORK/img" ;;
         *.img.xz)      xz -dc "$WORK/dl/$FIRST" > "$WORK/img/${FIRST%.xz}" ;;
         *.img.gz)      gzip -dc "$WORK/dl/$FIRST" > "$WORK/img/${FIRST%.gz}" ;;
