@@ -1,2 +1,35 @@
-* text eol=lf
+# Text files get LF line endings; binaries are detected by content
+# (text=auto) and the common binary types are also listed explicitly,
+# so a Windows checkout never normalizes or "modifies" them.
+* text=auto eol=lf
 *.zip binary
+*.7z binary
+*.gz binary
+*.xz binary
+*.so binary
+*.so.* binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.bmp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.mp4 binary
+*.mkv binary
+*.webm binary
+*.apk binary
+*.exe binary
+*.dtb binary
+*.img binary
+*.psf binary
+*.psf.gz binary
+*.ipk binary
+*.opk binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.pdf binary
+Image binary
+root/* binary

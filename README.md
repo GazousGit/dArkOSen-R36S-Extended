@@ -1,3 +1,5 @@
+> **dArkOSen-R36S-Extended:** this fork adds a boot video (random clip before EmulationStation, managed from Options > System) and rebuilds every official dArkOSen release with it pre-installed. See [extended/README.md](extended/README.md) and the [Releases](../../releases). Everything below is the upstream README.
+
 # dArkOSen-R36 for Genuine Devices
 
 <p align="center">
