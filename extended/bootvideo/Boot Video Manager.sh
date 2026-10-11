@@ -252,7 +252,11 @@ es_menu() {
   export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
   chmod 666 /dev/uinput
   cp /opt/inttools/keys.gptk "$keys"
-  grep -q '^b = backspace' "$keys" && sed -i 's/^b = .*/b = esc/; s/^a = .*/a = enter/' "$keys"
+  if grep -q 'name="InvertButtons" value="true"' /home/ark/.emulationstation/es_settings.cfg 2>/dev/null; then
+    sed -i 's/^a = .*/a = esc/; s/^b = .*/b = enter/' "$keys"     # B confirms, like ES
+  else
+    sed -i 's/^a = .*/a = enter/; s/^b = .*/b = esc/' "$keys"     # A confirms, like ES
+  fi
   start_gp() { /opt/inttools/gptokeyb -1 "$0" -c "$keys" >/dev/null 2>&1 & gp=$!; }
   stop_gp()  { [ -n "$gp" ] && kill "$gp" 2>/dev/null; gp=""; }
   local font; font=$(setfont -v 2>&1 | grep -o '/.*\.psf.*')
@@ -617,9 +621,13 @@ setfont /usr/share/consolefonts/Lat7-TerminusBold22x11.psf.gz 2>/dev/null
 printf "\e[?25l\033[H\033[2J" > "$CURR_TTY"
 export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
 chmod 666 /dev/uinput
+# Confirm/back follow EmulationStation: dArkOSen's keys.gptk makes B confirm and A
+# go back; when ES is set so that A confirms (no InvertButtons), do the same here.
 cp /opt/inttools/keys.gptk "$TMP_KEYS"
-if grep -q '^b = backspace' "$TMP_KEYS"; then
-    sed -i 's/^b = .*/b = esc/; s/^a = .*/a = enter/' "$TMP_KEYS"
+if grep -q 'name="InvertButtons" value="true"' /home/ark/.emulationstation/es_settings.cfg 2>/dev/null; then
+    sed -i 's/^a = .*/a = esc/; s/^b = .*/b = enter/' "$TMP_KEYS"
+else
+    sed -i 's/^a = .*/a = enter/; s/^b = .*/b = esc/' "$TMP_KEYS"
 fi
 Start_GPTKeyb
 trap 'Exit_Menu' EXIT

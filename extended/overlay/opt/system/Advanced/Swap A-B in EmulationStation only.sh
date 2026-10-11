@@ -60,9 +60,12 @@ setfont /usr/share/consolefonts/Lat7-TerminusBold22x11.psf.gz 2>/dev/null
 printf "\e[?25l\033[H\033[2J" > "$CURR_TTY"
 export SDL_GAMECONTROLLERCONFIG_FILE="/opt/inttools/gamecontrollerdb.txt"
 chmod 666 /dev/uinput
+# Confirm/back follow EmulationStation (A confirms unless ES has InvertButtons=true)
 cp /opt/inttools/keys.gptk "$TMP_KEYS"
-if grep -q '^b = backspace' "$TMP_KEYS"; then
-    sed -i 's/^b = .*/b = esc/; s/^a = .*/a = enter/' "$TMP_KEYS"
+if Inverted; then
+    sed -i 's/^a = .*/a = esc/; s/^b = .*/b = enter/' "$TMP_KEYS"
+else
+    sed -i 's/^a = .*/a = enter/; s/^b = .*/b = esc/' "$TMP_KEYS"
 fi
 Start_GPTKeyb
 trap 'Exit_Menu' EXIT

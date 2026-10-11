@@ -37,6 +37,8 @@ Command line (as root): `--repair` re-attaches everything without the UI, `--ins
 
 `extended/overlay/` mirrors the device tree; the build copies it into the image, keeps a copy in `/usr/share/dArkOSen-Extended/overlay/`, and the self-repair service puts back any file an OTA update removed. On an existing device, copy the scripts by hand to the same paths.
 
+In dArkOSen's own dialog tools (Boot Splash Manager, R36 Boot Volume) **B confirms and A goes back**, because `/opt/inttools/keys.gptk` maps SDL "a" to Esc and the SDL mapping makes "a" the physical A button. Our menus instead follow EmulationStation: A confirms unless ES has `InvertButtons` set (dArkOSen's "Switch A/B globally" in JP mode), in which case B confirms, as in ES.
+
 | Tool (Options > Advanced) | What it does |
 | --- | --- |
 | **Swap A-B in EmulationStation only** | Flips ES's `InvertButtons` setting and restarts ES. dArkOSen's own "Switch A/B Globally" changes RetroArch, PortMaster, Kodi and 351Files at the same time; this one leaves the emulators alone. |
