@@ -13,7 +13,7 @@ dArkOSen, dArkOS and ArkOS are the work of their respective authors (MIT). Pleas
 | --- | --- |
 | Playback | Before EmulationStation starts, a random video from `/roms/bootvideos` (or `/roms2/bootvideos` when roms are on SD2) plays full screen with `ffplay`, the same player dArkOSen uses for the game loading video. Once per boot, not when ES restarts, not over SSH, not in the BaRT recovery menu. |
 | Skip | A, B, X, Y or Start. Volume keys and Fn combinations are left to `ogage`, so volume and brightness keep working during the video and never skip it. |
-| Manage | *Options > System > Boot Video Manager*: on/off, random or one fixed video, sound, max length (5 to 60 s), converter (640x480 H.264 baseline + AAC), preview, repair, uninstall. |
+| Manage | *Options > System > Boot Video Manager*: on/off, random or one fixed video, sound, volume (mixer level used only during the video, the previous level comes back afterwards), max length (5 to 60 s), converter (640x480 H.264 baseline + AAC), preview, repair, uninstall. |
 | EmulationStation | A **Boot Videos** system lists the videos with thumbnails and video previews. Press A on one to preview it or to enable/disable it (disabled videos move to `bootvideos/disabled`). |
 | Self-repair | `bootvideo-repair.service` runs before ES at every boot (after `/roms` is mounted) and re-attaches the hook and the ES entry if an OTA update replaced `emulationstation.sh` or `es_systems.cfg`. It also creates `/roms/bootvideos` and copies videos shipped with a built image into it, once. |
 
@@ -33,12 +33,35 @@ Files on the device:
 
 Command line (as root): `--repair` re-attaches everything without the UI, `--install-root DIR` installs into a mounted image root, `--uninstall-root DIR` removes it again.
 
+## Extra tools (overlay)
+
+`extended/overlay/` mirrors the device tree; the build copies it into the image, keeps a copy in `/usr/share/dArkOSen-Extended/overlay/`, and the self-repair service puts back any file an OTA update removed. On an existing device, copy the scripts by hand to the same paths.
+
+In dArkOSen's own dialog tools (Boot Splash Manager, R36 Boot Volume) **B confirms and A goes back**, because `/opt/inttools/keys.gptk` maps SDL "a" to Esc and the SDL mapping makes "a" the physical A button. Our menus instead follow EmulationStation: A confirms unless ES has `InvertButtons` set (dArkOSen's "Switch A/B globally" in JP mode), in which case B confirms, as in ES.
+
+| Tool (Options > Advanced) | What it does |
+| --- | --- |
+| **Swap A-B in EmulationStation only** | Flips ES's `InvertButtons` setting and restarts ES. dArkOSen's own "Switch A/B Globally" changes RetroArch, PortMaster, Kodi and 351Files at the same time; this one leaves the emulators alone. |
+| **Dreamcast Tuning (retrorun)** | Edits the `reicast_*` core options in `/home/ark/.config/retrorun.cfg` that retrorun and retrorun32 read (backup `retrorun.cfg.pre-ext`, restore option). The fast preset adds what RetroArch32 already uses on this hardware and dArkOS's retrorun config lacks: internal resolution 320x240, synchronous rendering off, VGA cable, single `anisotropic_filtering = off` line (dArkOS ships two conflicting ones), fog and DSP off. Toggles for resolution, sync, frame skip, fog, DSP and the FPS counter. |
+| **N64 Tuning (mupen64plus-next)** | dArkOS ships no options for the RetroArch core `mupen64plus_next`, so it runs at 640x480 with framebuffer emulation and N64 depth compare on. The fast preset writes the usual RK3326 settings into `/home/ark/.config/retroarch/retroarch-core-options.cfg` (320x240, FB emulation off, color/depth copies off, depth compare off, threaded renderer, frame duping, GLideN64 + HLE + dynarec, no texture filtering); toggles for the main ones; restore puts back exactly the previous `mupen64plus-*` lines. **Built images ship this preset** (the build runs the tool's `--fast`). Select the core in ES: N64 > Advanced System Options > Emulator `retroarch`, Core `mupen64plus_next`. |
+| **PPSSPP Sync standalone and 2021** | dArkOS keeps `standalone` (`/roms/psp/ppsspp/`) and `standalone-2021` (`/roms/psp/ppsspp-2021/`) apart, so per-game settings (`PSP/SYSTEM/<GAMEID>_ppsspp.ini`, `_controls.ini`) made for one build are invisible to the other. Copies them in either direction (targets kept as `.bak`), and can optionally point the 2021 build at the standalone memory stick (`MemStickDirectory`) so saves, states and per-game settings are shared; reversible. |
+
+### Known upstream issue: no sound in 32-bit emulators on the 09302026 image
+
+The 09302026 image ships Debian's 32-bit ALSA library, which produces no audio on this kernel, so retrorun32 and retroarch32 (Dreamcast, Naomi, N64 32-bit cores and others) are silent. djparentx fixed it in the **09302026b** OTA update (custom 32-bit `libasound` 1.2.8 plus new retrorun/retrorun32/retroarch32 binaries), which the image does not include. Run *Options > System > Update-dArkOSen* once (Wi-Fi) after flashing; the Dreamcast tool's audio check tells you whether it is installed. The offline package is on the [dArkOSen-updates 09302026b release](https://github.com/djparentx/dArkOSen-updates/releases/tag/09302026b).
+
+## Personal files in your own image (local builds)
+
+`extended/roms/` is laid out like `/roms` on the device (`bios/`, `bootvideos/`, `psp/...`). A local build run with `--roms extended/roms` appends its files to the image's `/roms.tar`, the archive that dArkOSen's first boot extracts into the freshly formatted EASYROMS partition, so a newly flashed card comes up with your BIOS files, videos and settings already in place. Nothing in that folder is committed (it is git-ignored and the build workflow refuses to run if a file from it is ever tracked), and the release images of this repository never contain such files. Details and the build command are in [roms/README.md](roms/README.md).
+
 ## Layout of this folder
 
 ```
 extended/
   bootvideo/Boot Video Manager.sh   the tool (v3), single source of truth
   bootvideos/                       videos placed here are shipped inside the built images
+  roms/                             personal files for local builds, laid out like /roms (never committed)
+  overlay/                          extra tools, laid out like the device tree (copied into the image)
   build/build-image.sh              download upstream release -> mount -> inject -> repack .7z
   build/inject.sh                   applies our additions to a mounted root filesystem
   tests/run-tests.sh                offline tests (Linux, root)
@@ -67,8 +90,9 @@ Release 09302026: partition 1 `BOOT` (FAT, 100 MiB, kernel, dtbs, `firstboot.sh`
 ```bash
 sudo apt-get install -y p7zip-full jq btrfs-progs
 sudo bash extended/build/build-image.sh --tag 09302026 --workdir /tmp/darkosen --videos extended/bootvideos
-# or, with an already extracted image:
+# or, with an already extracted image (the script moves it, so give it a copy):
 sudo bash extended/build/build-image.sh --img /path/dArkOSen_R36_09302026.img --tag 09302026 --no-pack
+# add --roms extended/roms to include your personal files (see roms/README.md)
 ```
 
 Tests: `sudo bash extended/tests/run-tests.sh` (needs bash, awk, python3; ffmpeg and shellcheck optional).

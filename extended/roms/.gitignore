@@ -1,0 +1,5 @@
+# Personal files for local builds (BIOS, private videos, configs). This repository
+# is public: nothing placed in this folder is ever committed.
+*
+!.gitignore
+!README.md

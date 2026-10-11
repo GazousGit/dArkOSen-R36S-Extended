@@ -59,7 +59,12 @@ jobs:
       ext_tag: ${{ steps.r.outputs.ext_tag }}
       build: ${{ steps.r.outputs.build }}
       draft: ${{ steps.r.outputs.draft }}
+      tree: ${{ steps.r.outputs.tree }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: extended
+          sparse-checkout-cone-mode: true
       - id: r
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,14 +77,23 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          # extended/roms/ holds personal files for local builds (BIOS and the like) and
+          # this repository is public: refuse to build if anything from it was committed.
+          LEAK=$(git ls-files extended/roms | grep -vxE 'extended/roms/(README\.md|\.gitignore)' | head -5 || true)
+          if [ -n "$LEAK" ]; then
+            echo "::error title=Personal files committed::extended/roms/ must only contain README.md and .gitignore in git. Remove these files and purge them from the history: $(tr '\n' ' ' <<<"$LEAK")"
+            exit 1
+          fi
           TAG="$IN_TAG"
           [ -n "$TAG" ] || TAG=$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)
           EXT="${TAG}-ext"
+          TREE=$(git rev-parse HEAD:extended)        # content hash of extended/: what goes into the image
           ON_DEFAULT=false; [ "$REF_NAME" = "$DEFAULT_BRANCH" ] && ON_DEFAULT=true
           DRAFT="${IN_DRAFT:-false}"; [ "$ON_DEFAULT" = true ] || DRAFT=true
           BUILD=true
 
           if IS_DRAFT=$(gh release view "$EXT" --json isDraft --jq .isDraft 2>/dev/null); then
+            REL_TREE=$(gh release view "$EXT" --json body --jq .body | grep -oE 'DARKOSEN_EXTENDED_TREE=[0-9a-f]+' | head -1 | cut -d= -f2 || true)
             if [ "${IN_FORCE:-false}" = "true" ]; then
               echo "Release $EXT exists; forced rebuild, deleting it first"
               gh release delete "$EXT" --yes --cleanup-tag || gh release delete "$EXT" --yes
@@ -87,8 +101,15 @@ jobs:
               echo "Draft release $EXT exists and $DEFAULT_BRANCH was updated: publishing it"
               gh release edit "$EXT" --draft=false
               BUILD=false
+            elif [ -n "$REL_TREE" ] && [ "$REL_TREE" != "$TREE" ] && [ "$ON_DEFAULT" = true ]; then
+              echo "Release $EXT was built from extended/ $REL_TREE, $DEFAULT_BRANCH now has $TREE: rebuilding it"
+              gh release delete "$EXT" --yes --cleanup-tag || gh release delete "$EXT" --yes
+            elif [ -n "$REL_TREE" ] && [ "$REL_TREE" != "$TREE" ]; then
+              echo "Release $EXT is older than this branch's extended/ ($REL_TREE vs $TREE); it will be rebuilt once $DEFAULT_BRANCH has these changes"
+              echo "::notice title=Build skipped::extended/ changed, but rebuilds of an existing release only happen from $DEFAULT_BRANCH (or with force)."
+              BUILD=false
             else
-              echo "Release $EXT already exists (draft=$IS_DRAFT); nothing to build"
+              echo "Release $EXT already exists (draft=$IS_DRAFT) and matches extended/ $TREE; nothing to build"
               BUILD=false
             fi
           else
@@ -100,9 +121,12 @@ jobs:
             echo "ext_tag=$EXT"
             echo "build=$BUILD"
             echo "draft=$DRAFT"
+            echo "tree=$TREE"
           } >> "$GITHUB_OUTPUT"
-          echo "### Build image" >> "$GITHUB_STEP_SUMMARY"
-          echo "- upstream tag: \`$TAG\`  -  our release: \`$EXT\`  -  build: $BUILD  -  draft: $DRAFT" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Build image"
+            echo "- upstream tag: \`$TAG\`  -  our release: \`$EXT\`  -  build: $BUILD  -  draft: $DRAFT  -  extended/ tree: \`$TREE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build and publish ${{ needs.check.outputs.ext_tag }}
@@ -157,6 +181,7 @@ jobs:
           TAG: ${{ needs.check.outputs.tag }}
           WORK: ${{ steps.wd.outputs.dir }}
           LEVEL: ${{ inputs.level || '5' }}
+          EXTENDED_TREE: ${{ needs.check.outputs.tree }}
         run: |
           set +e
           sudo -E bash extended/build/build-image.sh \

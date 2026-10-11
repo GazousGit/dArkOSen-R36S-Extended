@@ -13,7 +13,7 @@ TOOL="$REPO/extended/bootvideo/Boot Video Manager.sh"
 INJECT="$REPO/extended/build/inject.sh"
 BUILD="$REPO/extended/build/build-image.sh"
 T=$(mktemp -d)
-trap 'rm -rf "$T"' EXIT
+trap 'umount "$T/root9" 2>/dev/null; rm -rf "$T"' EXIT
 PASS=0; FAILED=0
 
 ok()   { PASS=$((PASS+1)); echo "  ok   $*"; }
@@ -56,6 +56,8 @@ make_root() {   # $1 = dir, $2 = roms path used in es_systems.cfg (/roms or /rom
 EOF
     echo 'root:x:0:0:root:/root:/bin/bash'              > "$R/etc/passwd"
     echo 'ark:x:1000:1000:ark:/home/ark:/bin/bash'     >> "$R/etc/passwd"
+    mkdir -p "$R/home/ark/.config/retroarch"
+    printf 'reicast_alpha_sorting = "per-strip (fast, least accurate)"\nsnes9x_overclock = "disabled"\n' > "$R/home/ark/.config/retroarch/retroarch-core-options.cfg"
 }
 xml_ok() { python3 -I -c 'import sys,xml.etree.ElementTree as E; E.parse(sys.argv[1])' "$1"; }
 count_systems() { python3 -I -c 'import sys,xml.etree.ElementTree as E; print(sum(1 for s in E.parse(sys.argv[1]).getroot() if s.findtext("name")==sys.argv[2]))' "$1" "$2"; }
@@ -72,6 +74,12 @@ if command -v shellcheck >/dev/null; then
 else
     echo "  skip shellcheck (not installed)"
 fi
+for f in "$REPO"/extended/overlay/opt/system/Advanced/*.sh; do
+    expect "bash -n $(basename "$f")" bash -n "$f"
+    if command -v shellcheck >/dev/null; then
+        expect "shellcheck $(basename "$f")" shellcheck -S warning -e SC2016 "$f"
+    fi
+done
 
 echo "== offline install into a fake root"
 R="$T/root"; make_root "$R"
@@ -93,6 +101,7 @@ expect "unit waits for the roms mount"        grep -q '^RequiresMountsFor=/roms'
 expect "tool copied to /opt/system/System"    cmp -s "$TOOL" "$R/opt/system/System/Boot Video Manager.sh"
 expect "config: ENABLED=1"                    grep -q '^ENABLED=1$' "$CONF"
 expect "config: ES_ENTRY=1"                   grep -q '^ES_ENTRY=1$' "$CONF"
+expect "config: VOLUME=0 (system volume)"     grep -q '^VOLUME=0$' "$CONF"
 expect "config: DIR=/roms/bootvideos"         grep -q '^DIR="/roms/bootvideos"$' "$CONF"
 expect "config owned by ark (1000:1000)"      test "$(stat -c %u:%g "$CONF")" = "1000:1000"
 expect "bootvideos/disabled created"          test -d "$R/roms/bootvideos/disabled"
@@ -180,9 +189,21 @@ expect "two videos in the seed folder"        test "$(ls "$SEED"/*.mp4 | wc -l)"
 expect "README not shipped"                   test ! -e "$SEED/README.md"
 expect "nothing written to the roms mount point" test ! -e "$R6/roms/bootvideos"
 expect "inject reports 2 shipped videos"      grep -q 'shipped   -> 2 video' <<<"$OUTI"
+DCTOOL="opt/system/Advanced/Dreamcast Tuning (retrorun).sh"
+expect "overlay tool installed (755)"         test "$(stat -c %a "$R6/$DCTOOL")" = "755"
+expect "overlay seed copy kept"               cmp -s "$REPO/extended/overlay/$DCTOOL" "$R6/usr/share/dArkOSen-Extended/overlay/$DCTOOL"
+expect "overlay README not installed"         test ! -e "$R6/README.md"
+expect "inject reports overlay files"         grep -qE 'overlay   -> [1-9][0-9]* file' <<<"$OUTI"
+RACO6="$R6/home/ark/.config/retroarch/retroarch-core-options.cfg"
+expect "N64 preset applied in the image"      grep -qx 'mupen64plus-43screensize = "320x240"' "$RACO6"
+expect "N64 preset: FB emulation off"         grep -qx 'mupen64plus-EnableFBEmulation = "False"' "$RACO6"
+expect "other cores' options untouched"       grep -qx 'snes9x_overclock = "disabled"' "$RACO6"
+expect "N64 backup kept for restore"          test -f "$RACO6.mupen64plus.pre-ext"
+rm -f "$R6/$DCTOOL"                                                     # an OTA update removed it
 # first regular boot: roms is mounted and populated, the repair service seeds the videos once
 mkdir -p "$R6/roms/launchimages"
 expect "--repair exits 0 (first boot with roms)" env BOOTVIDEO_ROOT="$R6" bash "$TOOL" --repair
+expect "overlay tool restored by --repair"    test -x "$R6/$DCTOOL"
 expect "shipped videos copied to bootvideos"  test "$(ls "$R6/roms/bootvideos/"*.mp4 | wc -l)" = "2"
 expect "video with & and spaces copied"       test -f "$R6/roms/bootvideos/Intro & Logo.mp4"
 expect "seed marker written"                  test -e "$R6/roms/bootvideos/.seeded"
@@ -192,6 +213,164 @@ expect "--repair exits 0 (later boot)"        env BOOTVIDEO_ROOT="$R6" bash "$TO
 expect "deleted video is not copied again"    test ! -e "$R6/roms/bootvideos/second.mp4"
 expect "inject.sh without videos exits 0"     bash "$INJECT" "$R6" "" 09302026
 expect "seed folder removed when no videos"   test ! -e "$SEED"
+
+echo "== inject.sh with files for the roms partition (appended to roms.tar)"
+R7="$T/root7"; make_root "$R7"; rmdir "$R7/roms/launchimages"       # image build: roms not available
+mkdir -p "$T/up/roms/bios" "$T/up/roms/launchimages"                 # what dArkOSen ships in /roms.tar
+echo upstream > "$T/up/roms/bios/shipped.bin"; echo img > "$T/up/roms/launchimages/loading.jpg"
+tar -cf "$T/roms.tar.orig" -C "$T/up" roms
+cp "$T/roms.tar.orig" "$R7/roms.tar"
+NORIG=$(tar -tf "$T/roms.tar.orig" | wc -l)
+PD="$T/romsdir"; mkdir -p "$PD/bios/dc" "$PD/bootvideos" "$PD/psp/ppsspp/PSP/SYSTEM"
+echo "not shipped" > "$PD/README.md"; echo '*' > "$PD/.gitignore"
+head -c 70000 /dev/urandom > "$PD/bios/scph1001.bin"
+echo flash > "$PD/bios/dc/DC boot & flash (v1).bin"
+echo mine > "$PD/bios/SHIPPED.BIN"                                   # dArkOSen has bios/shipped.bin
+echo video > "$PD/bootvideos/Logo.mp4"
+echo ini > "$PD/psp/ppsspp/PSP/SYSTEM/ULUS10041_ppsspp.ini"
+OUTR=$(bash "$INJECT" "$R7" "" 09302026 "$PD" 2>&1); RC=$?
+expect "inject.sh exits 0"                    test "$RC" = "0"
+expect "4 entries appended to roms.tar"       test "$(tar -tf "$R7/roms.tar" | wc -l)" = "$((NORIG + 4))"
+expect "BIOS file listed as roms/bios/..."    bash -c 'tar -tf "$1" | grep -qx "roms/bios/scph1001.bin"' _ "$R7/roms.tar"
+expect "README and .gitignore not shipped"    bash -c '! tar -tf "$1" | grep -qiE "readme|gitignore"' _ "$R7/roms.tar"
+expect "file dArkOSen ships is not replaced"  bash -c '! tar -tf "$1" | grep -qx "roms/bios/SHIPPED.BIN"' _ "$R7/roms.tar"
+expect "inject reports 4 files"               grep -q 'roms      -> 4 file' <<<"$OUTR"
+expect "build stamp records the count"        grep -qx 'DARKOSEN_EXTENDED_ROMS_FILES=4' "$R7/etc/dArkOSen-Extended.release"
+expect "nothing written to the roms mount point" test -z "$(ls -A "$R7/roms")"
+# dArkOSen's first boot: pv -n /roms.tar | tar ... -xf - -C /   (into the new EASYROMS partition)
+mkdir -p "$T/fb"
+expect "first-boot extraction exits 0"        bash -c 'cat "$1" | tar --no-same-permissions --no-same-owner --warning=no-timestamp -xf - -C "$2"' _ "$R7/roms.tar" "$T/fb"
+expect "BIOS file identical after extraction" cmp -s "$PD/bios/scph1001.bin" "$T/fb/roms/bios/scph1001.bin"
+expect "name with spaces, & and () kept"      cmp -s "$PD/bios/dc/DC boot & flash (v1).bin" "$T/fb/roms/bios/dc/DC boot & flash (v1).bin"
+expect "video lands in roms/bootvideos"       test -f "$T/fb/roms/bootvideos/Logo.mp4"
+expect "nested settings file lands in place"  test -f "$T/fb/roms/psp/ppsspp/PSP/SYSTEM/ULUS10041_ppsspp.ini"
+expect "dArkOSen's own file keeps its content" grep -qx upstream "$T/fb/roms/bios/shipped.bin"
+expect "rest of roms.tar intact"              test -f "$T/fb/roms/launchimages/loading.jpg"
+S1=$(sha256sum < "$R7/roms.tar")
+expect "second inject.sh run exits 0"         bash "$INJECT" "$R7" "" 09302026 "$PD"
+expect "second run appends nothing"           test "$S1" = "$(sha256sum < "$R7/roms.tar")"
+R8="$T/root8"; make_root "$R8"; cp "$T/roms.tar.orig" "$R8/roms.tar"
+mkdir -p "$T/romsempty"; echo "not shipped" > "$T/romsempty/README.md"
+expect "folder with only a README exits 0"    bash "$INJECT" "$R8" "" 09302026 "$T/romsempty"
+expect "inject.sh without a roms folder exits 0" bash "$INJECT" "$R8" "" 09302026
+expect "roms.tar untouched in both cases"     cmp -s "$T/roms.tar.orig" "$R8/roms.tar"
+rm -f "$R8/roms.tar"                                                  # an image that already went through first boot
+OUTN=$(bash "$INJECT" "$R8" "" 09302026 "$PD" 2>&1); RC=$?
+expect "files but no roms.tar: inject.sh fails" test "$RC" != "0"
+expect "and says why"                         grep -q 'roms.tar not found' <<<"$OUTN"
+R9="$T/root9"; mkdir -p "$R9"
+if mount -t tmpfs -o size=48m tmpfs "$R9" 2>/dev/null; then           # a root filesystem with 48 MB free
+    make_root "$R9"; cp "$T/roms.tar.orig" "$R9/roms.tar"
+    mkdir -p "$T/romsbig/bios"; head -c 20000000 /dev/zero > "$T/romsbig/bios/big.bin"
+    OUTB=$(bash "$INJECT" "$R9" "" 09302026 "$T/romsbig" 2>&1); RC=$?
+    expect "files leaving under 32 MB free are refused" test "$RC" != "0"
+    expect "and the message gives the sizes"  grep -q '19 MB.*32 MB must remain' <<<"$OUTB"
+    expect "roms.tar untouched after the refusal" cmp -s "$T/roms.tar.orig" "$R9/roms.tar"
+    head -c 2000000 /dev/zero > "$T/romsbig/bios/big.bin"
+    expect "files that fit are accepted"      bash "$INJECT" "$R9" "" 09302026 "$T/romsbig"
+    umount "$R9"
+else
+    echo "  skip free-space checks (cannot mount a tmpfs)"
+fi
+RG="$REPO/extended/roms/.gitignore"
+expect "extended/roms ignores every file"     grep -qx '\*' "$RG"
+expect "only .gitignore and README.md are kept in git" test "$(grep -c '^!' "$RG")" = "2"
+
+echo "== overlay tool: Dreamcast Tuning (retrorun)"
+DC="$REPO/extended/overlay/opt/system/Advanced/Dreamcast Tuning (retrorun).sh"
+RC="$T/retrorun.cfg"
+cat > "$RC" <<'EOF'
+# ---- RETRORUN INTERNAL SETTINGS ----
+retrorun_screenshot_folder = /roms/dreamcast
+retrorun_alternative_input_mode = true
+retrorun_swap_l1r1_with_l2r2 = true
+# ---- FLYCAST ----
+reicast_threaded_rendering = enabled
+reicast_anisotropic_filtering = off
+reicast_enable_dsp = disabled
+reicast_enable_rtt = disabled
+# Alpha sorting should be set to per strip
+reicast_alpha_sorting = per-strip (fast, least accurate)
+reicast_auto_skip_frame = enabled
+reicast_framerate = normal
+reicast_anisotropic_filtering = disabled
+#PARALLEL
+parallel-n64-framerate = fullspeed
+parallel-n64-screensize = 640x480
+EOF
+cp "$RC" "$T/retrorun.orig"
+expect "--fast exits 0"                       bash "$DC" --fast "$RC"
+expect "backup of the original kept"          cmp -s "$T/retrorun.orig" "$RC.pre-ext"
+expect "internal resolution 320x240 added"    grep -qx 'reicast_internal_resolution = 320x240' "$RC"
+expect "added lines sit in the FLYCAST block" awk '/^# ---- FLYCAST ----/{f=NR} /^#PARALLEL/{p=NR} /^reicast_internal_resolution/{r=NR} END{exit !(r>f && r<p)}' "$RC"
+expect "synchronous rendering disabled"       grep -qx 'reicast_synchronous_rendering = disabled' "$RC"
+expect "cable type VGA (RGB)"                 grep -qx 'reicast_cable_type = VGA (RGB)' "$RC"
+expect "duplicate anisotropic lines merged"   test "$(grep -c '^reicast_anisotropic_filtering' "$RC")" = "1"
+expect "anisotropic filtering = off"          grep -qx 'reicast_anisotropic_filtering = off' "$RC"
+expect "existing values kept once"            test "$(grep -c '^reicast_alpha_sorting' "$RC")" = "1"
+expect "retrorun_* lines untouched"           grep -qx 'retrorun_swap_l1r1_with_l2r2 = true' "$RC"
+expect "parallel-n64 lines untouched"         grep -qx 'parallel-n64-screensize = 640x480' "$RC"
+expect "comments kept"                        grep -q '^# Alpha sorting should be set to per strip' "$RC"
+expect "--fast is idempotent"                 bash -c 'bash "$1" --fast "$2" && test "$(grep -c "^reicast_internal_resolution" "$2")" = 1' _ "$DC" "$RC"
+expect "--show lists the options"             bash -c 'bash "$1" --show "$2" | grep -q "^reicast_internal_resolution = 320x240"' _ "$DC" "$RC"
+expect "--restore exits 0"                    bash "$DC" --restore "$RC"
+expect "restore gives the original file back" cmp -s "$T/retrorun.orig" "$RC"
+expect "backup removed after restore"         test ! -e "$RC.pre-ext"
+
+echo "== overlay tool: Swap A-B in EmulationStation only"
+SW="$REPO/extended/overlay/opt/system/Advanced/Swap A-B in EmulationStation only.sh"
+ESS="$T/es_settings.cfg"
+printf '<?xml version="1.0"?>\n<config>\n\t<bool name="DrawClock" value="true" />\n\t<bool name="FavoritesFirst" value="true" />\n\t<string name="ThemeSet" value="es-theme-nes-box" />\n</config>\n' > "$ESS"
+cp "$ESS" "$T/es_settings.orig"
+expect "--toggle exits 0 (normal -> swapped)" bash "$SW" --toggle "$ESS"
+expect "InvertButtons=true added"             grep -q '<bool name="InvertButtons" value="true" />' "$ESS"
+expect "added right after <config>"           awk '/<config>/{c=NR} /InvertButtons/{i=NR} END{exit !(i==c+1)}' "$ESS"
+expect "es_settings.cfg still valid XML"      xml_ok "$ESS"
+expect "exactly one InvertButtons line"       test "$(grep -c InvertButtons "$ESS")" = "1"
+expect "--toggle exits 0 (swapped -> normal)" bash "$SW" --toggle "$ESS"
+expect "file back to the original"            cmp -s "$T/es_settings.orig" "$ESS"
+
+echo "== overlay tool: N64 Tuning (mupen64plus-next)"
+N64="$REPO/extended/overlay/opt/system/Advanced/N64 Tuning (mupen64plus-next).sh"
+RO="$T/retroarch-core-options.cfg"
+printf 'mupen64plus-43screensize = "640x480"\nreicast_alpha_sorting = "per-strip (fast, least accurate)"\nsnes9x_overclock = "disabled"\n' > "$RO"
+cp "$RO" "$T/ro.orig"
+expect "--fast exits 0"                       bash "$N64" --fast "$RO"
+expect "backup holds the old mupen64plus line" grep -qx 'mupen64plus-43screensize = "640x480"' "$RO.mupen64plus.pre-ext"
+expect "resolution replaced in place (once)"  test "$(grep -c '^mupen64plus-43screensize' "$RO")" = "1"
+expect "resolution is 320x240"                grep -qx 'mupen64plus-43screensize = "320x240"' "$RO"
+expect "threaded renderer on"                 grep -qx 'mupen64plus-ThreadedRenderer = "True"' "$RO"
+expect "depth compare off"                    grep -qx 'mupen64plus-EnableN64DepthCompare = "False"' "$RO"
+expect "values are quoted (RetroArch format)" bash -c '! grep -E "^mupen64plus-[^=]+= [^\"]" "$1"' _ "$RO"
+expect "no duplicate keys"                    bash -c 'test "$(grep "^mupen64plus-" "$1" | cut -d= -f1 | sort | uniq -d | wc -l)" = 0' _ "$RO"
+expect "other cores untouched"                grep -qx 'reicast_alpha_sorting = "per-strip (fast, least accurate)"' "$RO"
+expect "--fast is idempotent"                 bash -c 'bash "$1" --fast "$2" && test "$(grep -c "^mupen64plus-" "$2")" -eq 38' _ "$N64" "$RO"
+expect "--show lists the lines"               bash -c 'bash "$1" --show "$2" | grep -q "^mupen64plus-rsp-plugin = \"hle\""' _ "$N64" "$RO"
+expect "--restore exits 0"                    bash "$N64" --restore "$RO"
+expect "restore gives the original back"      bash -c 'diff <(sort "$1") <(sort "$2") >/dev/null' _ "$T/ro.orig" "$RO"
+expect "backup removed after restore"         test ! -e "$RO.mupen64plus.pre-ext"
+printf 'snes9x_overclock = "disabled"\n' > "$RO"
+expect "--fast on a file without mupen lines" bash "$N64" --fast "$RO"
+expect "empty backup recorded"                test -f "$RO.mupen64plus.pre-ext" -a ! -s "$RO.mupen64plus.pre-ext"
+expect "--restore removes all mupen lines"    bash -c 'bash "$1" --restore "$2" && test "$(grep -c "^mupen64plus-" "$2")" = 0' _ "$N64" "$RO"
+
+echo "== overlay tool: PPSSPP Sync standalone and 2021"
+PP="$REPO/extended/overlay/opt/system/Advanced/PPSSPP Sync standalone and 2021.sh"
+PR="$T/roms"; mkdir -p "$PR/psp/ppsspp/PSP/SYSTEM" "$PR/psp/ppsspp-2021/PSP/SYSTEM"
+printf '[Graphics]\nRenderingMode = 1\n' > "$PR/psp/ppsspp/PSP/SYSTEM/ULUS10041_ppsspp.ini"
+printf '[ControlMapping]\n' > "$PR/psp/ppsspp/PSP/SYSTEM/ULUS10041_controls.ini"
+printf '[General]\nFirstRun = False\n' > "$PR/psp/ppsspp/PSP/SYSTEM/ppsspp.ini"
+printf '[General]\nFirstRun = False\n[Graphics]\n' > "$PR/psp/ppsspp-2021/PSP/SYSTEM/ppsspp.ini.sdl"
+printf 'old\n' > "$PR/psp/ppsspp-2021/PSP/SYSTEM/ULUS10041_ppsspp.ini"
+cp "$PR/psp/ppsspp-2021/PSP/SYSTEM/ppsspp.ini.sdl" "$T/sdl.orig"
+expect "--copy-to-2021 copies 2 files"        bash -c 'test "$(PPSSPP_ROMS="$2" bash "$1" --copy-to-2021)" = 2' _ "$PP" "$PR"
+expect "per-game ini copied"                  cmp -s "$PR/psp/ppsspp/PSP/SYSTEM/ULUS10041_ppsspp.ini" "$PR/psp/ppsspp-2021/PSP/SYSTEM/ULUS10041_ppsspp.ini"
+expect "previous target kept as .bak"         grep -qx old "$PR/psp/ppsspp-2021/PSP/SYSTEM/ULUS10041_ppsspp.ini.bak"
+expect "main ppsspp.ini NOT copied"           test ! -e "$PR/psp/ppsspp-2021/PSP/SYSTEM/ppsspp.ini"
+expect "--share-memstick exits 0"             env PPSSPP_ROMS="$PR" bash "$PP" --share-memstick
+expect "MemStickDirectory set under [General]" awk -v d="MemStickDirectory = $PR/psp/ppsspp/" '/^\[General\]/{g=NR} $0==d{m=NR} END{exit !(m==g+1)}' "$PR/psp/ppsspp-2021/PSP/SYSTEM/ppsspp.ini.sdl"
+expect "--own-memstick exits 0"               env PPSSPP_ROMS="$PR" bash "$PP" --own-memstick
+expect "ppsspp.ini.sdl back to the original"  cmp -s "$T/sdl.orig" "$PR/psp/ppsspp-2021/PSP/SYSTEM/ppsspp.ini.sdl"
 
 echo "== helper --rebuild (gamelist + thumbnails)"
 if command -v ffmpeg >/dev/null; then
