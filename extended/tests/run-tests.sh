@@ -13,7 +13,7 @@ TOOL="$REPO/extended/bootvideo/Boot Video Manager.sh"
 INJECT="$REPO/extended/build/inject.sh"
 BUILD="$REPO/extended/build/build-image.sh"
 T=$(mktemp -d)
-trap 'rm -rf "$T"' EXIT
+trap 'umount "$T/root9" 2>/dev/null; rm -rf "$T"' EXIT
 PASS=0; FAILED=0
 
 ok()   { PASS=$((PASS+1)); echo "  ok   $*"; }
@@ -213,6 +213,68 @@ expect "--repair exits 0 (later boot)"        env BOOTVIDEO_ROOT="$R6" bash "$TO
 expect "deleted video is not copied again"    test ! -e "$R6/roms/bootvideos/second.mp4"
 expect "inject.sh without videos exits 0"     bash "$INJECT" "$R6" "" 09302026
 expect "seed folder removed when no videos"   test ! -e "$SEED"
+
+echo "== inject.sh with files for the roms partition (appended to roms.tar)"
+R7="$T/root7"; make_root "$R7"; rmdir "$R7/roms/launchimages"       # image build: roms not available
+mkdir -p "$T/up/roms/bios" "$T/up/roms/launchimages"                 # what dArkOSen ships in /roms.tar
+echo upstream > "$T/up/roms/bios/shipped.bin"; echo img > "$T/up/roms/launchimages/loading.jpg"
+tar -cf "$T/roms.tar.orig" -C "$T/up" roms
+cp "$T/roms.tar.orig" "$R7/roms.tar"
+NORIG=$(tar -tf "$T/roms.tar.orig" | wc -l)
+PD="$T/romsdir"; mkdir -p "$PD/bios/dc" "$PD/bootvideos" "$PD/psp/ppsspp/PSP/SYSTEM"
+echo "not shipped" > "$PD/README.md"; echo '*' > "$PD/.gitignore"
+head -c 70000 /dev/urandom > "$PD/bios/scph1001.bin"
+echo flash > "$PD/bios/dc/DC boot & flash (v1).bin"
+echo mine > "$PD/bios/SHIPPED.BIN"                                   # dArkOSen has bios/shipped.bin
+echo video > "$PD/bootvideos/Logo.mp4"
+echo ini > "$PD/psp/ppsspp/PSP/SYSTEM/ULUS10041_ppsspp.ini"
+OUTR=$(bash "$INJECT" "$R7" "" 09302026 "$PD" 2>&1); RC=$?
+expect "inject.sh exits 0"                    test "$RC" = "0"
+expect "4 entries appended to roms.tar"       test "$(tar -tf "$R7/roms.tar" | wc -l)" = "$((NORIG + 4))"
+expect "BIOS file listed as roms/bios/..."    bash -c 'tar -tf "$1" | grep -qx "roms/bios/scph1001.bin"' _ "$R7/roms.tar"
+expect "README and .gitignore not shipped"    bash -c '! tar -tf "$1" | grep -qiE "readme|gitignore"' _ "$R7/roms.tar"
+expect "file dArkOSen ships is not replaced"  bash -c '! tar -tf "$1" | grep -qx "roms/bios/SHIPPED.BIN"' _ "$R7/roms.tar"
+expect "inject reports 4 files"               grep -q 'roms      -> 4 file' <<<"$OUTR"
+expect "build stamp records the count"        grep -qx 'DARKOSEN_EXTENDED_ROMS_FILES=4' "$R7/etc/dArkOSen-Extended.release"
+expect "nothing written to the roms mount point" test -z "$(ls -A "$R7/roms")"
+# dArkOSen's first boot: pv -n /roms.tar | tar ... -xf - -C /   (into the new EASYROMS partition)
+mkdir -p "$T/fb"
+expect "first-boot extraction exits 0"        bash -c 'cat "$1" | tar --no-same-permissions --no-same-owner --warning=no-timestamp -xf - -C "$2"' _ "$R7/roms.tar" "$T/fb"
+expect "BIOS file identical after extraction" cmp -s "$PD/bios/scph1001.bin" "$T/fb/roms/bios/scph1001.bin"
+expect "name with spaces, & and () kept"      cmp -s "$PD/bios/dc/DC boot & flash (v1).bin" "$T/fb/roms/bios/dc/DC boot & flash (v1).bin"
+expect "video lands in roms/bootvideos"       test -f "$T/fb/roms/bootvideos/Logo.mp4"
+expect "nested settings file lands in place"  test -f "$T/fb/roms/psp/ppsspp/PSP/SYSTEM/ULUS10041_ppsspp.ini"
+expect "dArkOSen's own file keeps its content" grep -qx upstream "$T/fb/roms/bios/shipped.bin"
+expect "rest of roms.tar intact"              test -f "$T/fb/roms/launchimages/loading.jpg"
+S1=$(sha256sum < "$R7/roms.tar")
+expect "second inject.sh run exits 0"         bash "$INJECT" "$R7" "" 09302026 "$PD"
+expect "second run appends nothing"           test "$S1" = "$(sha256sum < "$R7/roms.tar")"
+R8="$T/root8"; make_root "$R8"; cp "$T/roms.tar.orig" "$R8/roms.tar"
+mkdir -p "$T/romsempty"; echo "not shipped" > "$T/romsempty/README.md"
+expect "folder with only a README exits 0"    bash "$INJECT" "$R8" "" 09302026 "$T/romsempty"
+expect "inject.sh without a roms folder exits 0" bash "$INJECT" "$R8" "" 09302026
+expect "roms.tar untouched in both cases"     cmp -s "$T/roms.tar.orig" "$R8/roms.tar"
+rm -f "$R8/roms.tar"                                                  # an image that already went through first boot
+OUTN=$(bash "$INJECT" "$R8" "" 09302026 "$PD" 2>&1); RC=$?
+expect "files but no roms.tar: inject.sh fails" test "$RC" != "0"
+expect "and says why"                         grep -q 'roms.tar not found' <<<"$OUTN"
+R9="$T/root9"; mkdir -p "$R9"
+if mount -t tmpfs -o size=48m tmpfs "$R9" 2>/dev/null; then           # a root filesystem with 48 MB free
+    make_root "$R9"; cp "$T/roms.tar.orig" "$R9/roms.tar"
+    mkdir -p "$T/romsbig/bios"; head -c 20000000 /dev/zero > "$T/romsbig/bios/big.bin"
+    OUTB=$(bash "$INJECT" "$R9" "" 09302026 "$T/romsbig" 2>&1); RC=$?
+    expect "files leaving under 32 MB free are refused" test "$RC" != "0"
+    expect "and the message gives the sizes"  grep -q '19 MB.*32 MB must remain' <<<"$OUTB"
+    expect "roms.tar untouched after the refusal" cmp -s "$T/roms.tar.orig" "$R9/roms.tar"
+    head -c 2000000 /dev/zero > "$T/romsbig/bios/big.bin"
+    expect "files that fit are accepted"      bash "$INJECT" "$R9" "" 09302026 "$T/romsbig"
+    umount "$R9"
+else
+    echo "  skip free-space checks (cannot mount a tmpfs)"
+fi
+RG="$REPO/extended/roms/.gitignore"
+expect "extended/roms ignores every file"     grep -qx '\*' "$RG"
+expect "only .gitignore and README.md are kept in git" test "$(grep -c '^!' "$RG")" = "2"
 
 echo "== overlay tool: Dreamcast Tuning (retrorun)"
 DC="$REPO/extended/overlay/opt/system/Advanced/Dreamcast Tuning (retrorun).sh"

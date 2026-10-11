@@ -9,7 +9,9 @@
 # Only the root filesystem (btrfs) is modified. The EASYROMS
 # partition is left alone: dArkOSen's first boot re-creates
 # it anyway, so shipped videos are stored on the root
-# filesystem and copied to /roms/bootvideos at boot.
+# filesystem and copied to /roms/bootvideos at boot, and
+# --roms files are appended to the /roms.tar that the first
+# boot extracts into the new partition.
 #
 # Runs as root on Linux: the GitHub Actions ubuntu runner,
 # or WSL/Ubuntu for a local build.
@@ -26,6 +28,8 @@
 #   --workdir DIR       scratch dir (default ./work)
 #   --out DIR           output dir (default WORKDIR/out)
 #   --videos DIR        videos to ship (seeded into /roms/bootvideos)
+#   --roms DIR          files for the roms partition, laid out like
+#                       /roms (local builds: extended/roms/README.md)
 #   --level N           7z compression level 1-9 (default 5)
 #   --split SIZE        7z volume size (default 1900m)
 #   --name NAME         output base name
@@ -36,7 +40,7 @@
 set -euo pipefail
 
 REPO="djparentx/dArkOSen-R36S"
-TAG=""; IMG=""; WORK="$PWD/work"; OUT=""; VIDEOS=""
+TAG=""; IMG=""; WORK="$PWD/work"; OUT=""; VIDEOS=""; ROMS=""
 LEVEL=5; SPLIT="1900m"; NAME=""; KEEP_IMG=0; NO_PACK=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -46,12 +50,13 @@ while [ $# -gt 0 ]; do
         --workdir)  WORK=$2; shift 2 ;;
         --out)      OUT=$2; shift 2 ;;
         --videos)   VIDEOS=$2; shift 2 ;;
+        --roms)     ROMS=$2; shift 2 ;;
         --level)    LEVEL=$2; shift 2 ;;
         --split)    SPLIT=$2; shift 2 ;;
         --name)     NAME=$2; shift 2 ;;
         --keep-img) KEEP_IMG=1; shift ;;
         --no-pack)  NO_PACK=1; shift ;;
-        -h|--help)  sed -n '2,36p' "$0"; exit 0 ;;
+        -h|--help)  sed -n '2,39p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -65,6 +70,7 @@ done
 SEVENZ=$(command -v 7z || command -v 7zz || true)
 [ -n "$SEVENZ" ] || { echo "build-image: missing 7z (apt install p7zip-full)" >&2; exit 1; }
 [ -n "$VIDEOS" ] && VIDEOS="$(cd "$VIDEOS" && pwd)"
+[ -n "$ROMS" ] && ROMS="$(cd "$ROMS" && pwd)"
 
 mkdir -p "$WORK"; WORK="$(cd "$WORK" && pwd)"
 OUT="${OUT:-$WORK/out}"; mkdir -p "$OUT" "$WORK/dl" "$WORK/img" "$WORK/mnt" "$WORK/probe"
@@ -210,14 +216,16 @@ ROOT_FREE=$(df --output=avail -k "$MNT" | tail -1 | tr -d ' ')
 log "root filesystem mounted, $(human $((ROOT_FREE * 1024))) free"
 [ "$ROOT_FREE" -gt 8192 ] || die "root filesystem has less than 8 MB free"
 
-bash "$INJECT" "$MNT" "$VIDEOS" "$TAG"
+bash "$INJECT" "$MNT" "$VIDEOS" "$TAG" "$ROMS"
 STAMP=$(cat "$MNT/etc/dArkOSen-Extended.release")
+ROMSFILES=$(sed -n 's/^DARKOSEN_EXTENDED_ROMS_FILES=//p' <<<"$STAMP")
 SHIPPED=0
 if [ -d "$MNT/usr/share/dArkOSen-Extended/bootvideos" ]; then
     SHIPPED=$(find "$MNT/usr/share/dArkOSen-Extended/bootvideos" -maxdepth 1 -type f | wc -l)
 fi
 
 sync
+log "root filesystem after the changes: $(human $(( $(df --output=avail -k "$MNT" | tail -1 | tr -d ' ') * 1024 ))) free"
 umount "$MNT"
 
 FSCK_AFTER=$(fscheck "$ROOTP" "$ROOTTYPE" "$WORK/fsck-after.log")
@@ -272,6 +280,9 @@ OURREPO="${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}"
     echo "- **Self-repair service** (\`bootvideo-repair.service\`) that re-attaches the boot video if an OTA update replaces \`emulationstation.sh\` or \`es_systems.cfg\`."
     if [ "${SHIPPED:-0}" -gt 0 ]; then
         echo "- $SHIPPED boot video(s) shipped with the image; they are copied into \`/roms/bootvideos\` on the first regular boot."
+    fi
+    if [ "${ROMSFILES:-0}" -gt 0 ]; then
+        echo "- $ROMSFILES personal file(s) for the roms partition, extracted into \`/roms\` by the first boot. **This image is a private build: do not publish or share it.**"
     fi
     echo "- **Extra tools** in *Options > Advanced*: \"Swap A-B in EmulationStation only\" (flip A/B in ES without touching the emulators), \"Dreamcast Tuning (retrorun)\" (320x240 internal resolution and the other speed options RetroArch32 uses, with backup/restore and an FPS counter), \"N64 Tuning (mupen64plus-next)\" and \"PPSSPP Sync standalone and 2021\" (share per-game settings between the two PPSSPP builds)."
     echo "- **N64 preset pre-applied** for the RetroArch core \`mupen64plus_next\`: 320x240, framebuffer emulation off, depth compare off, threaded renderer, frame duping (dArkOS ships the core at its defaults). The N64 tool can restore the defaults. Pick the core in ES: N64 > Advanced System Options > Emulator \`retroarch\`, Core \`mupen64plus_next\`."

@@ -4,4 +4,4 @@ Any `.mp4`, `.mkv`, `.webm` or `.gif` placed in this folder is shipped inside th
 
 Nothing here by default: the built images ship the tool enabled with an empty `bootvideos` folder, and the first video copied to `/roms/bootvideos/` on the SD card plays at the next boot.
 
-Keep files small: the root filesystem of the image has about 300 MB free, and a 15 s clip at 640x480 is 2 to 5 MB. Only add videos you have the right to redistribute; this repository and its releases are public.
+Keep files small: the root filesystem of the image has about 300 MB free, and a 15 s clip at 640x480 is 2 to 5 MB. Only add videos you have the right to redistribute; this repository and its releases are public. Videos for your own cards only go in `extended/roms/bootvideos/` instead, which is never committed (see [../roms/README.md](../roms/README.md)).

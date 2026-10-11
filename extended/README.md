@@ -50,12 +50,17 @@ In dArkOSen's own dialog tools (Boot Splash Manager, R36 Boot Volume) **B confir
 
 The 09302026 image ships Debian's 32-bit ALSA library, which produces no audio on this kernel, so retrorun32 and retroarch32 (Dreamcast, Naomi, N64 32-bit cores and others) are silent. djparentx fixed it in the **09302026b** OTA update (custom 32-bit `libasound` 1.2.8 plus new retrorun/retrorun32/retroarch32 binaries), which the image does not include. Run *Options > System > Update-dArkOSen* once (Wi-Fi) after flashing; the Dreamcast tool's audio check tells you whether it is installed. The offline package is on the [dArkOSen-updates 09302026b release](https://github.com/djparentx/dArkOSen-updates/releases/tag/09302026b).
 
+## Personal files in your own image (local builds)
+
+`extended/roms/` is laid out like `/roms` on the device (`bios/`, `bootvideos/`, `psp/...`). A local build run with `--roms extended/roms` appends its files to the image's `/roms.tar`, the archive that dArkOSen's first boot extracts into the freshly formatted EASYROMS partition, so a newly flashed card comes up with your BIOS files, videos and settings already in place. Nothing in that folder is committed (it is git-ignored and the build workflow refuses to run if a file from it is ever tracked), and the release images of this repository never contain such files. Details and the build command are in [roms/README.md](roms/README.md).
+
 ## Layout of this folder
 
 ```
 extended/
   bootvideo/Boot Video Manager.sh   the tool (v3), single source of truth
   bootvideos/                       videos placed here are shipped inside the built images
+  roms/                             personal files for local builds, laid out like /roms (never committed)
   overlay/                          extra tools, laid out like the device tree (copied into the image)
   build/build-image.sh              download upstream release -> mount -> inject -> repack .7z
   build/inject.sh                   applies our additions to a mounted root filesystem
@@ -85,8 +90,9 @@ Release 09302026: partition 1 `BOOT` (FAT, 100 MiB, kernel, dtbs, `firstboot.sh`
 ```bash
 sudo apt-get install -y p7zip-full jq btrfs-progs
 sudo bash extended/build/build-image.sh --tag 09302026 --workdir /tmp/darkosen --videos extended/bootvideos
-# or, with an already extracted image:
+# or, with an already extracted image (the script moves it, so give it a copy):
 sudo bash extended/build/build-image.sh --img /path/dArkOSen_R36_09302026.img --tag 09302026 --no-pack
+# add --roms extended/roms to include your personal files (see roms/README.md)
 ```
 
 Tests: `sudo bash extended/tests/run-tests.sh` (needs bash, awk, python3; ffmpeg and shellcheck optional).

@@ -77,6 +77,13 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          # extended/roms/ holds personal files for local builds (BIOS and the like) and
+          # this repository is public: refuse to build if anything from it was committed.
+          LEAK=$(git ls-files extended/roms | grep -vxE 'extended/roms/(README\.md|\.gitignore)' | head -5 || true)
+          if [ -n "$LEAK" ]; then
+            echo "::error title=Personal files committed::extended/roms/ must only contain README.md and .gitignore in git. Remove these files and purge them from the history: $(tr '\n' ' ' <<<"$LEAK")"
+            exit 1
+          fi
           TAG="$IN_TAG"
           [ -n "$TAG" ] || TAG=$(gh api "repos/$UPSTREAM/releases/latest" --jq .tag_name)
           EXT="${TAG}-ext"

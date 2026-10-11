@@ -3,7 +3,7 @@
 # dArkOSen-R36S-Extended: apply our additions to a mounted
 # dArkOSen root filesystem.
 #
-#   inject.sh ROOT [VIDEOS_DIR] [UPSTREAM_TAG]
+#   inject.sh ROOT [VIDEOS_DIR] [UPSTREAM_TAG] [ROMS_DIR]
 #
 # ROOT        mount point of the image's root filesystem
 # VIDEOS_DIR  optional folder whose videos (mp4 mkv webm gif)
@@ -11,6 +11,11 @@
 #             root filesystem and copied into /roms/bootvideos
 #             by the self-repair service at boot, because the
 #             EASYROMS partition is re-created on first boot.
+# ROMS_DIR    optional folder laid out like /roms (bios/...,
+#             psp/...). Its files are appended to the image's
+#             /roms.tar, which dArkOSen's first boot extracts
+#             into the new EASYROMS partition. Local builds
+#             only: see extended/roms/README.md.
 #
 # Also copies extended/overlay/ (extra tools, laid out like
 # the device tree) into the root filesystem, plus a copy in
@@ -23,12 +28,15 @@
 # =======================================================
 set -euo pipefail
 
-ROOT="${1:?usage: inject.sh ROOT [VIDEOS_DIR] [TAG]}"
+ROOT="${1:?usage: inject.sh ROOT [VIDEOS_DIR] [TAG] [ROMS_DIR]}"
 VIDEOS="${2:-}"
 TAG="${3:-dev}"
+ROMSDIR="${4:-}"
 ROOT="${ROOT%/}"
 SEED="$ROOT/usr/share/dArkOSen-Extended/bootvideos"
 OVERLAY_SEED="$ROOT/usr/share/dArkOSen-Extended/overlay"
+ROMSTAR="$ROOT/roms.tar"
+ROMS_RESERVE_KB=32768      # free space that must remain on the root filesystem
 
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 TOOL="$HERE/../bootvideo/Boot Video Manager.sh"
@@ -51,6 +59,52 @@ if [ -n "$VIDEOS" ] && [ -d "$VIDEOS" ]; then
             cp -f "$v" "$SEED/"
         done
         chmod 755 "$SEED"; chmod 644 "$SEED"/*
+    fi
+fi
+
+# Files for the roms partition (optional): appended to /roms.tar, so dArkOSen's own
+# first boot puts them in place. Only files inside a top folder are taken (a README
+# next to the folders is not), and a file dArkOSen already ships is never replaced.
+NROMS=0
+if [ -n "$ROMSDIR" ] && [ -d "$ROMSDIR" ]; then
+    mapfile -t rfiles < <(cd "$ROMSDIR" && find . -mindepth 2 -type f ! -name .gitignore | sed 's|^\./||' | LC_ALL=C sort)
+    if [ ${#rfiles[@]} -eq 0 ]; then
+        echo "inject: no files in $ROMSDIR (nothing added to roms.tar)"
+    else
+        [ -f "$ROMSTAR" ] || { echo "inject: /roms.tar not found in the image, cannot ship files for the roms partition" >&2; exit 1; }
+        declare -A shipped=()
+        nbefore=0
+        while IFS= read -r m; do
+            [ -n "$m" ] || continue
+            shipped["${m,,}"]=1; nbefore=$((nbefore + 1))     # EASYROMS is exFAT: names are case-insensitive
+        done < <(tar -tf "$ROMSTAR")
+        add=()
+        for f in "${rfiles[@]}"; do
+            k="roms/${f,,}"
+            if [ -n "${shipped[$k]:-}" ]; then
+                echo "inject: roms/$f is already in roms.tar, not replaced"
+            else
+                add+=("$f")
+            fi
+        done
+        if [ ${#add[@]} -gt 0 ]; then
+            need=$(cd "$ROMSDIR" && printf '%s\0' "${add[@]}" | du -ck --apparent-size --files0-from=- | tail -1 | cut -f1)
+            need=$((need + ${#add[@]}))                        # tar header and padding of each file
+            free=$(df --output=avail -k "$ROOT" | tail -1 | tr -d ' ')
+            if [ $((free - need)) -lt "$ROMS_RESERVE_KB" ]; then
+                echo "inject: the files for the roms partition need $((need / 1024)) MB, the root filesystem has $((free / 1024)) MB free and $((ROMS_RESERVE_KB / 1024)) MB must remain" >&2
+                exit 1
+            fi
+            (cd "$ROMSDIR" && printf '%s\0' "${add[@]}" \
+                | tar -rf "$ROMSTAR" --null -T - --transform 's|^|roms/|' --owner=0 --group=0 --mode='u=rwX,go=rX')
+            nafter=$(tar -tf "$ROMSTAR" | wc -l)
+            if [ "$nafter" -ne $((nbefore + ${#add[@]})) ]; then
+                echo "inject: roms.tar lists $nafter entries after the append, expected $((nbefore + ${#add[@]}))" >&2
+                exit 1
+            fi
+            NROMS=${#add[@]}
+            echo "inject: roms.tar +$NROMS file(s), $((need / 1024)) MB:$(printf '%s\n' "${add[@]}" | cut -d/ -f1 | sort | uniq -c | awk '{printf " %s (%s)", $2, $1}')"
+        fi
     fi
 fi
 
@@ -91,6 +145,7 @@ DARKOSEN_EXTENDED_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 DARKOSEN_EXTENDED_COMMIT=${GITHUB_SHA:-local}
 DARKOSEN_EXTENDED_TREE=${EXTENDED_TREE:-unknown}
 DARKOSEN_EXTENDED_REPO=${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}
+DARKOSEN_EXTENDED_ROMS_FILES=$NROMS
 EOF
 
 echo "inject: done"
@@ -100,3 +155,4 @@ echo "inject: service   -> $(readlink "$ROOT/etc/systemd/system/multi-user.targe
 echo "inject: config    -> $(tr '\n' ' ' < "$ROOT/home/ark/.config/bootvideo.conf")"
 echo "inject: shipped   -> $(ls "$SEED" 2>/dev/null | wc -l) video(s) in ${SEED#"$ROOT"}"
 echo "inject: overlay   -> $NOVERLAY file(s)"
+echo "inject: roms      -> $NROMS file(s) appended to /roms.tar"
