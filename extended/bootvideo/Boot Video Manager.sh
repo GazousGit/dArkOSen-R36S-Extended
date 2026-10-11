@@ -69,6 +69,7 @@ D_ES_SH="/usr/bin/emulationstation/emulationstation.sh"
 D_ES_CFG="/etc/emulationstation/es_systems.cfg"
 D_TOOL="/opt/system/System/Boot Video Manager.sh"
 D_SEED="/usr/share/dArkOSen-Extended/bootvideos"   # videos shipped inside a built image
+D_OVERLAY="/usr/share/dArkOSen-Extended/overlay"   # extra tools shipped inside a built image
 # ---- the same paths on this machine ($ROOT is empty on the device) ----
 SEED="$ROOT$D_SEED"
 PLAYER="$ROOT$D_PLAYER"
@@ -117,7 +118,7 @@ cat > "$PLAYER" <<'PLAYER_EOF'
 #   bootvideo.sh --rebuild    -> thumbnails + gamelist.xml
 CONF="${BOOTVIDEO_CONF:-/home/ark/.config/bootvideo.conf}"
 DONE="/dev/shm/.bootvideo_done"
-ENABLED=0; SOUND=1; MAXLEN=15; MODE=random; FILE=""; DIR=""
+ENABLED=0; SOUND=1; VOLUME=0; MAXLEN=15; MODE=random; FILE=""; DIR=""
 [ -f "$CONF" ] && . "$CONF"
 if [ -z "$DIR" ] || [ ! -d "$DIR" ]; then
   DIR=""
@@ -171,14 +172,28 @@ PY
   WATCH=$!
 }
 
+PREV_VOL=""; VOL_CARD=0
+set_volume() {   # $1 = percent; remembers the current mixer level so it can be restored
+  VOL_CARD=$(aplay -l 2>/dev/null | grep -m1 -oP 'card \K[0-9]+(?=.*rk817)'); VOL_CARD=${VOL_CARD:-0}
+  PREV_VOL=$(sudo amixer -c "$VOL_CARD" sget Playback 2>/dev/null | grep -m1 -oP '\[\K[0-9]+(?=%\])')
+  sudo amixer -c "$VOL_CARD" -q sset Playback "$1%" 2>/dev/null
+}
+restore_volume() {
+  [ -n "$PREV_VOL" ] && sudo amixer -c "$VOL_CARD" -q sset Playback "$PREV_VOL%" 2>/dev/null
+  PREV_VOL=""
+}
+
 play() {   # $1 file, $2 max seconds, $3 sound 1/0
   local args=(-x 1280 -y 720 -loglevel quiet -autoexit -nostats -t "$2")
   [ "$3" = "1" ] || args+=(-an)
   printf "\033c" > /dev/tty1 2>/dev/null
   ensure_volume_keys
+  # Boot video volume (VOLUME=0 keeps the system level); the previous level comes back afterwards
+  if [ "$3" = "1" ] && [ "${VOLUME:-0}" -gt 0 ] 2>/dev/null; then set_volume "$VOLUME"; fi
   WATCH=""; start_skip_watcher
   timeout $(( $2 + 5 )) ffplay "${args[@]}" "$1" >/dev/null 2>&1
   [ -n "$WATCH" ] && sudo kill "$WATCH" 2>/dev/null
+  restore_volume
   printf "\033c" > /dev/tty1 2>/dev/null
 }
 
@@ -301,7 +316,7 @@ chmod 755 "$PLAYER"
 # Config
 # =======================================================
 Load_Conf() {
-    ENABLED=0; SOUND=1; MAXLEN=15; MODE=random; FILE=""; ES_ENTRY=0
+    ENABLED=0; SOUND=1; VOLUME=0; MAXLEN=15; MODE=random; FILE=""; ES_ENTRY=0
     [ -f "$CONF" ] && . "$CONF"
 }
 Save_Conf() {
@@ -309,6 +324,7 @@ Save_Conf() {
     cat > "$CONF" <<EOF
 ENABLED=$ENABLED
 SOUND=$SOUND
+VOLUME=$VOLUME
 MAXLEN=$MAXLEN
 MODE=$MODE
 FILE="$FILE"
@@ -467,6 +483,19 @@ Seed_Videos() {
     [ "$n" -gt 0 ] && Log "copied $n shipped video(s) into $D_VID_DIR"
     return 0
 }
+# Extra tools shipped inside a built image: put back any file an OTA update removed.
+Seed_Overlay() {
+    [ -d "$ROOT$D_OVERLAY" ] || return 0
+    local f
+    while IFS= read -r f; do
+        f=${f#./}
+        [ -e "$ROOT/$f" ] && continue
+        mkdir -p "$ROOT/$(dirname "$f")"
+        cp -f "$ROOT$D_OVERLAY/$f" "$ROOT/$f"
+        case "$f" in *.sh|usr/local/bin/*) chmod 755 "$ROOT/$f" ;; esac
+        Log "restored /$f"
+    done < <(cd "$ROOT$D_OVERLAY" && find . -type f)
+}
 Do_Repair() {
     local rc=0
     Load_Conf
@@ -474,6 +503,7 @@ Do_Repair() {
         mkdir -p "$VID_DIR/disabled"; OwnR "$VID_DIR"
         Seed_Videos
     fi
+    Seed_Overlay
     Save_Conf
     Write_Player
     if Install_Hook; then Log "boot hook: OK"; else Log "boot hook: FAILED ($D_ES_SH changed?)"; rc=1; fi
@@ -495,7 +525,7 @@ Do_Install_Offline() {
     if [ "$(readlink -f "$0")" != "$(readlink -f "$TOOL")" ]; then cat "$0" > "$TOOL"; fi
     chmod 755 "$TOOL"
     if [ ! -f "$CONF" ]; then
-        ENABLED=1; SOUND=1; MAXLEN=15; MODE=random; FILE=""; ES_ENTRY=1
+        ENABLED=1; SOUND=1; VOLUME=0; MAXLEN=15; MODE=random; FILE=""; ES_ENTRY=1
         Save_Conf
     else
         Load_Conf; ES_ENTRY=1; Save_Conf
@@ -611,38 +641,44 @@ while true; do
     Service_Present && sr="OK" || sr="MISSING"
     [ "$ENABLED" = 1 ] && st="ON" || st="OFF"
     [ "$SOUND" = 1 ] && snd="ON" || snd="OFF"
+    [ "${VOLUME:-0}" -gt 0 ] 2>/dev/null && vol="${VOLUME}%" || vol="system"
     [ "$MODE" = single ] && sel="$FILE" || sel="Random"
 
     CHOICE=$(dialog --clear --no-collapse --cancel-label "Exit" \
         --backtitle "$BACKTITLE" --title "Boot Video" \
-        --menu "Boot video: $st | Enabled: $n | Disabled: $d\nPlays: $sel | Sound: $snd | Max: ${MAXLEN}s\nHook: $hk | ES entry: $es | Self-repair: $sr" \
-        19 64 9 \
+        --menu "Boot video: $st | Enabled: $n | Disabled: $d\nPlays: $sel | Sound: $snd | Volume: $vol | Max: ${MAXLEN}s\nHook: $hk | ES entry: $es | Self-repair: $sr" \
+        20 64 10 \
         1 "Turn boot video ON / OFF" \
         2 "Choose video (or random)" \
         3 "Toggle sound" \
-        4 "Max length" \
-        5 "Convert videos for the R36" \
-        6 "Preview a random video now" \
-        7 "'Boot Videos' in EmulationStation" \
-        8 "Repair (after OTA update)" \
-        9 "Uninstall" \
+        4 "Boot video volume" \
+        5 "Max length" \
+        6 "Convert videos for the R36" \
+        7 "Preview a random video now" \
+        8 "'Boot Videos' in EmulationStation" \
+        9 "Repair (after OTA update)" \
+        10 "Uninstall" \
         2>&1 > "$CURR_TTY") || Exit_Menu
 
     case "$CHOICE" in
         1) [ "$ENABLED" = 1 ] && ENABLED=0 || ENABLED=1; Save_Conf ;;
         2) Pick_Video ;;
         3) [ "$SOUND" = 1 ] && SOUND=0 || SOUND=1; Save_Conf ;;
-        4) m=$(dialog --clear --backtitle "$BACKTITLE" --menu "Max length" 14 40 6 \
+        4) m=$(dialog --clear --backtitle "$BACKTITLE" --title "Boot video volume" \
+               --menu "Mixer level used only while the video plays;\nthe previous level comes back afterwards." 18 52 10 \
+               0 "System volume (unchanged)" 30 "30 %" 40 "40 %" 50 "50 %" 60 "60 %" 70 "70 %" 80 "80 %" 90 "90 %" 100 "100 %" \
+               2>&1 > "$CURR_TTY") && { VOLUME=$m; Save_Conf; } ;;
+        5) m=$(dialog --clear --backtitle "$BACKTITLE" --menu "Max length" 14 40 6 \
                5 "5 s" 10 "10 s" 15 "15 s" 30 "30 s" 60 "60 s" 2>&1 > "$CURR_TTY") && { MAXLEN=$m; Save_Conf; } ;;
-        5) Convert_Videos ;;
-        6) Stop_GPTKeyb
+        6) Convert_Videos ;;
+        7) Stop_GPTKeyb
            shopt -s nullglob nocaseglob
            v=("$VID_DIR"/*.mp4 "$VID_DIR"/*.mkv "$VID_DIR"/*.webm "$VID_DIR"/*.gif)
            shopt -u nullglob nocaseglob
            if [ ${#v[@]} -gt 0 ]; then sudo -u ark "$PLAYER" --preview "${v[$((RANDOM % ${#v[@]}))]}" "$MAXLEN"
            else Msg "No videos in $VID_DIR"; fi
            Start_GPTKeyb ;;
-        7) if ES_Entry_Present; then
+        8) if ES_Entry_Present; then
                a=$(dialog --clear --backtitle "$BACKTITLE" --title "Boot Videos in ES" --menu "" 10 50 2 \
                    1 "Refresh list and thumbnails" 2 "Remove from EmulationStation" 2>&1 > "$CURR_TTY") || continue
                if [ "$a" = 2 ]; then
@@ -656,8 +692,8 @@ while true; do
                if Add_ES_Entry; then ES_ENTRY=1; Save_Conf; Ask_Restart "'Boot Videos' is in EmulationStation."
                else Msg "Could not edit\n$ES_CFG"; fi
            fi ;;
-        8) r=$(Do_Repair 2>&1); Msg "$r" 10 60 ;;
-        9) if dialog --clear --backtitle "$BACKTITLE" --yesno "Remove the boot video, the ES entry, the helper and the self-repair service?\n\nYour videos in $VID_DIR are kept." 11 56 > "$CURR_TTY"; then
+        9) r=$(Do_Repair 2>&1); Msg "$r" 10 60 ;;
+        10) if dialog --clear --backtitle "$BACKTITLE" --yesno "Remove the boot video, the ES entry, the helper and the self-repair service?\n\nYour videos in $VID_DIR are kept." 11 56 > "$CURR_TTY"; then
                Do_Uninstall > /dev/null
                Msg "Removed. Your videos in $VID_DIR were kept.\nDelete '$(basename "$D_TOOL")' from Options > System to remove this tool." 10 60
                Ask_Restart "Removed from EmulationStation."

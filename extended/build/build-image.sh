@@ -273,6 +273,9 @@ OURREPO="${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}"
     if [ "${SHIPPED:-0}" -gt 0 ]; then
         echo "- $SHIPPED boot video(s) shipped with the image; they are copied into \`/roms/bootvideos\` on the first regular boot."
     fi
+    echo "- **Extra tools** in *Options > Advanced*: \"Swap A-B in EmulationStation only\" (flip A/B in ES without touching the emulators) and \"Dreamcast Tuning (retrorun)\" (320x240 internal resolution and the other speed options RetroArch32 uses, with backup/restore and an FPS counter)."
+    echo
+    echo "> **After flashing, run *Options > System > Update-dArkOSen* once.** The official 09302026 image needs djparentx's 09302026b update, otherwise 32-bit emulators (retrorun32, retroarch32: Dreamcast, Naomi and others) have no sound. This repack does not include OTA updates."
     echo
     echo "Everything lives in [extended/](https://github.com/$OURREPO/tree/main/extended). Device-side files: \`/opt/system/System/Boot Video Manager.sh\`, \`/usr/local/bin/bootvideo.sh\`, \`/usr/local/bin/bootvideo-repair\`, \`/etc/systemd/system/bootvideo-repair.service\`, \`/home/ark/.config/bootvideo.conf\`, plus one tagged line in \`emulationstation.sh\` and one system in \`es_systems.cfg\`."
     echo

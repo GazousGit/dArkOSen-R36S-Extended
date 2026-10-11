@@ -13,7 +13,7 @@ dArkOSen, dArkOS and ArkOS are the work of their respective authors (MIT). Pleas
 | --- | --- |
 | Playback | Before EmulationStation starts, a random video from `/roms/bootvideos` (or `/roms2/bootvideos` when roms are on SD2) plays full screen with `ffplay`, the same player dArkOSen uses for the game loading video. Once per boot, not when ES restarts, not over SSH, not in the BaRT recovery menu. |
 | Skip | A, B, X, Y or Start. Volume keys and Fn combinations are left to `ogage`, so volume and brightness keep working during the video and never skip it. |
-| Manage | *Options > System > Boot Video Manager*: on/off, random or one fixed video, sound, max length (5 to 60 s), converter (640x480 H.264 baseline + AAC), preview, repair, uninstall. |
+| Manage | *Options > System > Boot Video Manager*: on/off, random or one fixed video, sound, volume (mixer level used only during the video, the previous level comes back afterwards), max length (5 to 60 s), converter (640x480 H.264 baseline + AAC), preview, repair, uninstall. |
 | EmulationStation | A **Boot Videos** system lists the videos with thumbnails and video previews. Press A on one to preview it or to enable/disable it (disabled videos move to `bootvideos/disabled`). |
 | Self-repair | `bootvideo-repair.service` runs before ES at every boot (after `/roms` is mounted) and re-attaches the hook and the ES entry if an OTA update replaced `emulationstation.sh` or `es_systems.cfg`. It also creates `/roms/bootvideos` and copies videos shipped with a built image into it, once. |
 
@@ -33,12 +33,26 @@ Files on the device:
 
 Command line (as root): `--repair` re-attaches everything without the UI, `--install-root DIR` installs into a mounted image root, `--uninstall-root DIR` removes it again.
 
+## Extra tools (overlay)
+
+`extended/overlay/` mirrors the device tree; the build copies it into the image, keeps a copy in `/usr/share/dArkOSen-Extended/overlay/`, and the self-repair service puts back any file an OTA update removed. On an existing device, copy the scripts by hand to the same paths.
+
+| Tool (Options > Advanced) | What it does |
+| --- | --- |
+| **Swap A-B in EmulationStation only** | Flips ES's `InvertButtons` setting and restarts ES. dArkOSen's own "Switch A/B Globally" changes RetroArch, PortMaster, Kodi and 351Files at the same time; this one leaves the emulators alone. |
+| **Dreamcast Tuning (retrorun)** | Edits the `reicast_*` core options in `/home/ark/.config/retrorun.cfg` that retrorun and retrorun32 read (backup `retrorun.cfg.pre-ext`, restore option). The fast preset adds what RetroArch32 already uses on this hardware and dArkOS's retrorun config lacks: internal resolution 320x240, synchronous rendering off, VGA cable, single `anisotropic_filtering = off` line (dArkOS ships two conflicting ones), fog and DSP off. Toggles for resolution, sync, frame skip, fog, DSP and the FPS counter. |
+
+### Known upstream issue: no sound in 32-bit emulators on the 09302026 image
+
+The 09302026 image ships Debian's 32-bit ALSA library, which produces no audio on this kernel, so retrorun32 and retroarch32 (Dreamcast, Naomi, N64 32-bit cores and others) are silent. djparentx fixed it in the **09302026b** OTA update (custom 32-bit `libasound` 1.2.8 plus new retrorun/retrorun32/retroarch32 binaries), which the image does not include. Run *Options > System > Update-dArkOSen* once (Wi-Fi) after flashing; the Dreamcast tool's audio check tells you whether it is installed. The offline package is on the [dArkOSen-updates 09302026b release](https://github.com/djparentx/dArkOSen-updates/releases/tag/09302026b).
+
 ## Layout of this folder
 
 ```
 extended/
   bootvideo/Boot Video Manager.sh   the tool (v3), single source of truth
   bootvideos/                       videos placed here are shipped inside the built images
+  overlay/                          extra tools, laid out like the device tree (copied into the image)
   build/build-image.sh              download upstream release -> mount -> inject -> repack .7z
   build/inject.sh                   applies our additions to a mounted root filesystem
   tests/run-tests.sh                offline tests (Linux, root)

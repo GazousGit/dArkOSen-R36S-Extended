@@ -72,6 +72,12 @@ if command -v shellcheck >/dev/null; then
 else
     echo "  skip shellcheck (not installed)"
 fi
+for f in "$REPO"/extended/overlay/opt/system/Advanced/*.sh; do
+    expect "bash -n $(basename "$f")" bash -n "$f"
+    if command -v shellcheck >/dev/null; then
+        expect "shellcheck $(basename "$f")" shellcheck -S warning -e SC2016 "$f"
+    fi
+done
 
 echo "== offline install into a fake root"
 R="$T/root"; make_root "$R"
@@ -93,6 +99,7 @@ expect "unit waits for the roms mount"        grep -q '^RequiresMountsFor=/roms'
 expect "tool copied to /opt/system/System"    cmp -s "$TOOL" "$R/opt/system/System/Boot Video Manager.sh"
 expect "config: ENABLED=1"                    grep -q '^ENABLED=1$' "$CONF"
 expect "config: ES_ENTRY=1"                   grep -q '^ES_ENTRY=1$' "$CONF"
+expect "config: VOLUME=0 (system volume)"     grep -q '^VOLUME=0$' "$CONF"
 expect "config: DIR=/roms/bootvideos"         grep -q '^DIR="/roms/bootvideos"$' "$CONF"
 expect "config owned by ark (1000:1000)"      test "$(stat -c %u:%g "$CONF")" = "1000:1000"
 expect "bootvideos/disabled created"          test -d "$R/roms/bootvideos/disabled"
@@ -180,9 +187,16 @@ expect "two videos in the seed folder"        test "$(ls "$SEED"/*.mp4 | wc -l)"
 expect "README not shipped"                   test ! -e "$SEED/README.md"
 expect "nothing written to the roms mount point" test ! -e "$R6/roms/bootvideos"
 expect "inject reports 2 shipped videos"      grep -q 'shipped   -> 2 video' <<<"$OUTI"
+DCTOOL="opt/system/Advanced/Dreamcast Tuning (retrorun).sh"
+expect "overlay tool installed (755)"         test "$(stat -c %a "$R6/$DCTOOL")" = "755"
+expect "overlay seed copy kept"               cmp -s "$REPO/extended/overlay/$DCTOOL" "$R6/usr/share/dArkOSen-Extended/overlay/$DCTOOL"
+expect "overlay README not installed"         test ! -e "$R6/README.md"
+expect "inject reports overlay files"         grep -qE 'overlay   -> [1-9][0-9]* file' <<<"$OUTI"
+rm -f "$R6/$DCTOOL"                                                     # an OTA update removed it
 # first regular boot: roms is mounted and populated, the repair service seeds the videos once
 mkdir -p "$R6/roms/launchimages"
 expect "--repair exits 0 (first boot with roms)" env BOOTVIDEO_ROOT="$R6" bash "$TOOL" --repair
+expect "overlay tool restored by --repair"    test -x "$R6/$DCTOOL"
 expect "shipped videos copied to bootvideos"  test "$(ls "$R6/roms/bootvideos/"*.mp4 | wc -l)" = "2"
 expect "video with & and spaces copied"       test -f "$R6/roms/bootvideos/Intro & Logo.mp4"
 expect "seed marker written"                  test -e "$R6/roms/bootvideos/.seeded"
@@ -192,6 +206,60 @@ expect "--repair exits 0 (later boot)"        env BOOTVIDEO_ROOT="$R6" bash "$TO
 expect "deleted video is not copied again"    test ! -e "$R6/roms/bootvideos/second.mp4"
 expect "inject.sh without videos exits 0"     bash "$INJECT" "$R6" "" 09302026
 expect "seed folder removed when no videos"   test ! -e "$SEED"
+
+echo "== overlay tool: Dreamcast Tuning (retrorun)"
+DC="$REPO/extended/overlay/opt/system/Advanced/Dreamcast Tuning (retrorun).sh"
+RC="$T/retrorun.cfg"
+cat > "$RC" <<'EOF'
+# ---- RETRORUN INTERNAL SETTINGS ----
+retrorun_screenshot_folder = /roms/dreamcast
+retrorun_alternative_input_mode = true
+retrorun_swap_l1r1_with_l2r2 = true
+# ---- FLYCAST ----
+reicast_threaded_rendering = enabled
+reicast_anisotropic_filtering = off
+reicast_enable_dsp = disabled
+reicast_enable_rtt = disabled
+# Alpha sorting should be set to per strip
+reicast_alpha_sorting = per-strip (fast, least accurate)
+reicast_auto_skip_frame = enabled
+reicast_framerate = normal
+reicast_anisotropic_filtering = disabled
+#PARALLEL
+parallel-n64-framerate = fullspeed
+parallel-n64-screensize = 640x480
+EOF
+cp "$RC" "$T/retrorun.orig"
+expect "--fast exits 0"                       bash "$DC" --fast "$RC"
+expect "backup of the original kept"          cmp -s "$T/retrorun.orig" "$RC.pre-ext"
+expect "internal resolution 320x240 added"    grep -qx 'reicast_internal_resolution = 320x240' "$RC"
+expect "added lines sit in the FLYCAST block" awk '/^# ---- FLYCAST ----/{f=NR} /^#PARALLEL/{p=NR} /^reicast_internal_resolution/{r=NR} END{exit !(r>f && r<p)}' "$RC"
+expect "synchronous rendering disabled"       grep -qx 'reicast_synchronous_rendering = disabled' "$RC"
+expect "cable type VGA (RGB)"                 grep -qx 'reicast_cable_type = VGA (RGB)' "$RC"
+expect "duplicate anisotropic lines merged"   test "$(grep -c '^reicast_anisotropic_filtering' "$RC")" = "1"
+expect "anisotropic filtering = off"          grep -qx 'reicast_anisotropic_filtering = off' "$RC"
+expect "existing values kept once"            test "$(grep -c '^reicast_alpha_sorting' "$RC")" = "1"
+expect "retrorun_* lines untouched"           grep -qx 'retrorun_swap_l1r1_with_l2r2 = true' "$RC"
+expect "parallel-n64 lines untouched"         grep -qx 'parallel-n64-screensize = 640x480' "$RC"
+expect "comments kept"                        grep -q '^# Alpha sorting should be set to per strip' "$RC"
+expect "--fast is idempotent"                 bash -c 'bash "$1" --fast "$2" && test "$(grep -c "^reicast_internal_resolution" "$2")" = 1' _ "$DC" "$RC"
+expect "--show lists the options"             bash -c 'bash "$1" --show "$2" | grep -q "^reicast_internal_resolution = 320x240"' _ "$DC" "$RC"
+expect "--restore exits 0"                    bash "$DC" --restore "$RC"
+expect "restore gives the original file back" cmp -s "$T/retrorun.orig" "$RC"
+expect "backup removed after restore"         test ! -e "$RC.pre-ext"
+
+echo "== overlay tool: Swap A-B in EmulationStation only"
+SW="$REPO/extended/overlay/opt/system/Advanced/Swap A-B in EmulationStation only.sh"
+ESS="$T/es_settings.cfg"
+printf '<?xml version="1.0"?>\n<config>\n\t<bool name="DrawClock" value="true" />\n\t<bool name="FavoritesFirst" value="true" />\n\t<string name="ThemeSet" value="es-theme-nes-box" />\n</config>\n' > "$ESS"
+cp "$ESS" "$T/es_settings.orig"
+expect "--toggle exits 0 (normal -> swapped)" bash "$SW" --toggle "$ESS"
+expect "InvertButtons=true added"             grep -q '<bool name="InvertButtons" value="true" />' "$ESS"
+expect "added right after <config>"           awk '/<config>/{c=NR} /InvertButtons/{i=NR} END{exit !(i==c+1)}' "$ESS"
+expect "es_settings.cfg still valid XML"      xml_ok "$ESS"
+expect "exactly one InvertButtons line"       test "$(grep -c InvertButtons "$ESS")" = "1"
+expect "--toggle exits 0 (swapped -> normal)" bash "$SW" --toggle "$ESS"
+expect "file back to the original"            cmp -s "$T/es_settings.orig" "$ESS"
 
 echo "== helper --rebuild (gamelist + thumbnails)"
 if command -v ffmpeg >/dev/null; then
