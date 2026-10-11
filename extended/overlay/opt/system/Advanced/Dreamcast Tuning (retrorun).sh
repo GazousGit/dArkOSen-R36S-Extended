@@ -49,7 +49,7 @@ Set() {
         printf '%s = %s\n' "$k" "$v" >> "$CFG"
     fi
     rm -f "$tmp"
-    chown ark:ark "$CFG" 2>/dev/null
+    chown ark:ark "$CFG" "$BK" 2>/dev/null || chown 1000:1000 "$CFG" "$BK" 2>/dev/null || :
 }
 Toggle() {   # key, value A, value B (A is the default when unset)
     if [ "$(Get "$1")" = "$2" ]; then Set "$1" "$3"; else Set "$1" "$2"; fi

@@ -273,7 +273,8 @@ OURREPO="${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}"
     if [ "${SHIPPED:-0}" -gt 0 ]; then
         echo "- $SHIPPED boot video(s) shipped with the image; they are copied into \`/roms/bootvideos\` on the first regular boot."
     fi
-    echo "- **Extra tools** in *Options > Advanced*: \"Swap A-B in EmulationStation only\" (flip A/B in ES without touching the emulators) and \"Dreamcast Tuning (retrorun)\" (320x240 internal resolution and the other speed options RetroArch32 uses, with backup/restore and an FPS counter)."
+    echo "- **Extra tools** in *Options > Advanced*: \"Swap A-B in EmulationStation only\" (flip A/B in ES without touching the emulators), \"Dreamcast Tuning (retrorun)\" (320x240 internal resolution and the other speed options RetroArch32 uses, with backup/restore and an FPS counter), \"N64 Tuning (mupen64plus-next)\" and \"PPSSPP Sync standalone and 2021\" (share per-game settings between the two PPSSPP builds)."
+    echo "- **N64 preset pre-applied** for the RetroArch core \`mupen64plus_next\`: 320x240, framebuffer emulation off, depth compare off, threaded renderer, frame duping (dArkOS ships the core at its defaults). The N64 tool can restore the defaults. Pick the core in ES: N64 > Advanced System Options > Emulator \`retroarch\`, Core \`mupen64plus_next\`."
     echo
     echo "> **After flashing, run *Options > System > Update-dArkOSen* once.** The official 09302026 image needs djparentx's 09302026b update, otherwise 32-bit emulators (retrorun32, retroarch32: Dreamcast, Naomi and others) have no sound. This repack does not include OTA updates."
     echo
