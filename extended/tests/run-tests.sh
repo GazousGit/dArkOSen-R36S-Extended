@@ -56,7 +56,9 @@ make_root() {   # $1 = dir, $2 = roms path used in es_systems.cfg (/roms or /rom
 EOF
     echo 'root:x:0:0:root:/root:/bin/bash'              > "$R/etc/passwd"
     echo 'ark:x:1000:1000:ark:/home/ark:/bin/bash'     >> "$R/etc/passwd"
-    mkdir -p "$R/home/ark/.config/retroarch"
+    mkdir -p "$R/home/ark/.config/retroarch" "$R/home/ark/.emulationstation"
+    # dArkOSen's es_settings.cfg: the settings follow the XML declaration, no root element
+    printf '<?xml version="1.0"?>\n<bool name="InvertButtons" value="true" />\n<string name="ThemeSet" value="es-theme-retrodark" />\n' > "$R/home/ark/.emulationstation/es_settings.cfg"
     printf 'reicast_alpha_sorting = "per-strip (fast, least accurate)"\nsnes9x_overclock = "disabled"\n' > "$R/home/ark/.config/retroarch/retroarch-core-options.cfg"
 }
 xml_ok() { python3 -I -c 'import sys,xml.etree.ElementTree as E; E.parse(sys.argv[1])' "$1"; }
@@ -199,6 +201,10 @@ expect "N64 preset applied in the image"      grep -qx 'mupen64plus-43screensize
 expect "N64 preset: FB emulation stays on"    grep -qx 'mupen64plus-EnableFBEmulation = "True"' "$RACO6"
 expect "other cores' options untouched"       grep -qx 'snes9x_overclock = "disabled"' "$RACO6"
 expect "N64 backup kept for restore"          test -f "$RACO6.mupen64plus.pre-ext"
+ESS6="$R6/home/ark/.emulationstation/es_settings.cfg"
+expect "N64 default emulator is retroarch"    grep -qx '<string name="n64.emulator" value="retroarch" />' "$ESS6"
+expect "N64 default core is mupen64plus_next" grep -qx '<string name="n64.core" value="mupen64plus_next" />' "$ESS6"
+expect "other ES settings kept"               test "$(grep -cE 'InvertButtons|ThemeSet|xml version' "$ESS6")" = "3"
 rm -f "$R6/$DCTOOL"                                                     # an OTA update removed it
 # first regular boot: roms is mounted and populated, the repair service seeds the videos once
 mkdir -p "$R6/roms/launchimages"
@@ -212,6 +218,7 @@ rm -f "$R6/roms/bootvideos/second.mp4"                                # the user
 expect "--repair exits 0 (later boot)"        env BOOTVIDEO_ROOT="$R6" bash "$TOOL" --repair
 expect "deleted video is not copied again"    test ! -e "$R6/roms/bootvideos/second.mp4"
 expect "inject.sh without videos exits 0"     bash "$INJECT" "$R6" "" 09302026
+expect "N64 default still set exactly once"   test "$(grep -c '<string name="n64\.' "$ESS6")" = "2"
 expect "seed folder removed when no videos"   test ! -e "$SEED"
 
 echo "== inject.sh with files for the roms partition (appended to roms.tar)"
@@ -329,6 +336,12 @@ expect "es_settings.cfg still valid XML"      xml_ok "$ESS"
 expect "exactly one InvertButtons line"       test "$(grep -c InvertButtons "$ESS")" = "1"
 expect "--toggle exits 0 (swapped -> normal)" bash "$SW" --toggle "$ESS"
 expect "file back to the original"            cmp -s "$T/es_settings.orig" "$ESS"
+printf '<?xml version="1.0"?>\n<bool name="DrawClock" value="true" />\n<string name="ThemeSet" value="es-theme-nes-box" />\n' > "$ESS"   # dArkOSen's layout: no <config>
+cp "$ESS" "$T/es_settings.flat"
+expect "--toggle on a file without <config>"  bash "$SW" --toggle "$ESS"
+expect "InvertButtons added after the XML declaration" awk '/xml version/{x=NR} /InvertButtons" value="true"/{i=NR} END{exit !(i==x+1)}' "$ESS"
+expect "--toggle back"                        bash "$SW" --toggle "$ESS"
+expect "flat file back to the original"       cmp -s "$T/es_settings.flat" "$ESS"
 
 echo "== overlay tool: N64 Tuning (mupen64plus-next)"
 N64="$REPO/extended/overlay/opt/system/Advanced/N64 Tuning (mupen64plus-next).sh"
@@ -372,6 +385,15 @@ expect "framebuffer emulation back on"        grep -qx 'mupen64plus-EnableFBEmul
 expect "frame duping line of the old preset gone" bash -c '! grep -q "^mupen64plus-FrameDuping" "$1"' _ "$RO"
 expect "the user's own line kept"             grep -qx 'mupen64plus-pak2 = "rumble"' "$RO"
 expect "backup is the pre-tool state again"   test "$(cat "$RO.mupen64plus.pre-ext")" = 'mupen64plus-pak2 = "rumble"'
+# N64 default emulator in EmulationStation's settings
+ESN="$T/es_n64.cfg"
+printf '<?xml version="1.0"?>\n<config>\n\t<string name="n64.emulator" value="retroarch32" />\n\t<string name="ThemeSet" value="es-theme-nes-box" />\n</config>\n' > "$ESN"
+expect "--es-default exits 0"                 bash "$N64" --es-default "$ESN"
+expect "previous N64 default replaced"        test "$(grep -c 'n64.emulator' "$ESN")" = "1" -a "$(grep -c 'value="retroarch32"' "$ESN")" = "0"
+expect "emulator retroarch, core mupen64plus_next" test "$(grep -cE 'name="n64.emulator" value="retroarch" />|name="n64.core" value="mupen64plus_next" />' "$ESN")" = "2"
+expect "lines sit inside <config>, valid XML" xml_ok "$ESN"
+expect "--es-default is idempotent"           bash -c 'a=$(sha256sum < "$2"); bash "$1" --es-default "$2" && test "$a" = "$(sha256sum < "$2")"' _ "$N64" "$ESN"
+expect "--es-default without the file fails"  bash -c '! bash "$1" --es-default "$2/nope.cfg"' _ "$N64" "$T"
 # per-game option files
 RAH="$T/rahome"; NR="$T/n64roms"; mkdir -p "$RAH/retroarch32" "$NR"
 printf 'parallel-n64-cpucore = "dynamic_recompiler"\nparallel-n64-gfxplugin = "rice"\nparallel-n64-gfxplugin-accuracy = "low"\nparallel-n64-screensize = "320x240"\nsnes9x_overclock = "disabled"\n' > "$RAH/retroarch32/retroarch-core-options.cfg"

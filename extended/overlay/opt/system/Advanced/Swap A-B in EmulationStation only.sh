@@ -32,7 +32,12 @@ Toggle_File() {
         sed -i '/bool name="InvertButtons"/d' "$f"
     else
         sed -i '/bool name="InvertButtons"/d' "$f"
-        sed -i '/<config>/a <bool name="InvertButtons" value="true" \/>' "$f"
+        # dArkOSen's ES writes the settings right after the XML declaration, without a <config> element
+        if grep -q '<config>' "$f"; then
+            sed -i '/<config>/a <bool name="InvertButtons" value="true" \/>' "$f"
+        else
+            sed -i '1a <bool name="InvertButtons" value="true" />' "$f"
+        fi
     fi
     chown ark:ark "$f" 2>/dev/null
 }

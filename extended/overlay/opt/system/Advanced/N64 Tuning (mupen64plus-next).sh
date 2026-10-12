@@ -3,10 +3,18 @@
 # =======================================================
 # N64 Tuning for RetroArch  (dArkOSen Extended)
 #
-# This tool never changes which emulator a game uses: that
+# The menu never changes which emulator a game uses: that
 # stays the EmulationStation choice (the system default and
 # the per-game emulator/core kept in gamelist.xml). It only
 # edits RetroArch core options.
+#
+# The image build also runs "--es-default": it makes
+# retroarch / mupen64plus_next the N64 default in
+# EmulationStation, which is what the per-game list of
+# R36S-Game-Compatibility-Lists assumes (a game without an
+# emulator tag is one that runs best on that core). On a
+# running device set it in ES instead (N64 > Advanced
+# System Options).
 #
 # dArkOS ships RetroArch with NO options for the
 # Mupen64Plus-Next core, so it runs at its defaults (640x480,
@@ -154,8 +162,24 @@ Apply_Per_Game() {
     done
 }
 
-# Command line (no UI): --wiki [CFG], --restore [CFG], --show [CFG], --per-game
+# N64 default emulator in es_settings.cfg (ES rewrites that file on exit: only while ES is stopped)
+Set_ES_Default() {
+    local f=$1 tmp="$1.tmp"
+    grep -vE '<string name="n64\.(emulator|core)" ' "$f" > "$tmp" || :
+    [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
+    if grep -q '</config>' "$tmp"; then
+        sed -i 's|</config>|<string name="n64.core" value="mupen64plus_next" />\n<string name="n64.emulator" value="retroarch" />\n</config>|' "$tmp"
+    else
+        printf '%s\n' '<string name="n64.core" value="mupen64plus_next" />' '<string name="n64.emulator" value="retroarch" />' >> "$tmp"
+    fi
+    cat "$tmp" > "$f"; rm -f "$tmp"
+    Own "$f"
+}
+
+# Command line (no UI): --wiki [CFG], --restore [CFG], --show [CFG], --per-game, --es-default [ES_SETTINGS]
 case "${1:-}" in
+    --es-default) ES="${2:-/home/ark/.emulationstation/es_settings.cfg}"
+                [ -f "$ES" ] || { echo "$ES not found" >&2; exit 1; }; Set_ES_Default "$ES"; exit 0 ;;
     --wiki)     CFG="${2:-$CFG}"; [ -f "$CFG" ] || { echo "$CFG not found" >&2; exit 1; }; Apply_Preset; exit 0 ;;
     --restore)  CFG="${2:-$CFG}"; Restore || { echo "no backup $(Bk)" >&2; exit 1; }; exit 0 ;;
     --show)     CFG="${2:-$CFG}"; grep '^mupen64plus-' "$CFG"; exit 0 ;;
