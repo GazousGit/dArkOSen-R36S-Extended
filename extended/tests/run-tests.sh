@@ -31,6 +31,7 @@ make_root() {   # $1 = dir, $2 = roms path used in es_systems.cfg (/roms or /rom
              "$R/opt/system/System" "$R/usr/local/bin"
     cp "$REPO/usr/bin/emulationstation/emulationstation.sh" "$R/usr/bin/emulationstation/"
     chmod 755 "$R/usr/bin/emulationstation/emulationstation.sh"
+    cp "$REPO/usr/local/bin/perfmax" "$R/usr/local/bin/"; chmod 755 "$R/usr/local/bin/perfmax"
     cat > "$R/etc/emulationstation/es_systems.cfg" <<EOF
 <?xml version="1.0"?>
 <systemList>
@@ -76,10 +77,10 @@ if command -v shellcheck >/dev/null; then
 else
     echo "  skip shellcheck (not installed)"
 fi
-for f in "$REPO"/extended/overlay/opt/system/Advanced/*.sh; do
+for f in "$REPO"/extended/overlay/opt/system/Advanced/*.sh "$REPO"/extended/overlay/opt/system/*.sh "$REPO"/extended/overlay/usr/local/bin/*; do
     expect "bash -n $(basename "$f")" bash -n "$f"
     if command -v shellcheck >/dev/null; then
-        expect "shellcheck $(basename "$f")" shellcheck -S warning -e SC2016 "$f"
+        expect "shellcheck $(basename "$f")" shellcheck -S warning -e SC1090,SC1091,SC2016 "$f"
     fi
 done
 
@@ -427,6 +428,58 @@ expect "--share-memstick exits 0"             env PPSSPP_ROMS="$PR" bash "$PP" -
 expect "MemStickDirectory set under [General]" awk -v d="MemStickDirectory = $PR/psp/ppsspp/" '/^\[General\]/{g=NR} $0==d{m=NR} END{exit !(m==g+1)}' "$PR/psp/ppsspp-2021/PSP/SYSTEM/ppsspp.ini.sdl"
 expect "--own-memstick exits 0"               env PPSSPP_ROMS="$PR" bash "$PP" --own-memstick
 expect "ppsspp.ini.sdl back to the original"  cmp -s "$T/sdl.orig" "$PR/psp/ppsspp-2021/PSP/SYSTEM/ppsspp.ini.sdl"
+
+echo "== overlay tool: Shortcuts and the launch reminder"
+SC="$REPO/extended/overlay/opt/system/Shortcuts.sh"
+LR="$REPO/extended/overlay/usr/local/bin/launch-reminder"
+STX="$REPO/extended/overlay/usr/share/dArkOSen-Extended/shortcuts"
+PM6="$R6/usr/local/bin/perfmax"                                       # R6 went through inject.sh above
+expect "helper installed (755)"               test "$(stat -c %a "$R6/usr/local/bin/launch-reminder")" = "755"
+expect "tool installed in Options (755)"      test "$(stat -c %a "$R6/opt/system/Shortcuts.sh")" = "755"
+expect "built-in pages installed"             test -f "$R6/usr/share/dArkOSen-Extended/shortcuts/retroarch.txt"
+expect "exactly one hook line in perfmax"     test "$(grep -c '# shortcuts-hook' "$PM6")" = "1"
+expect "the hook is the last line"            bash -c 'tail -1 "$1" | grep -q "launch-reminder  # shortcuts-hook$"' _ "$PM6"
+expect "perfmax still parses, mode kept"      bash -c 'bash -n "$1" && test "$(stat -c %a "$1")" = 755' _ "$PM6"
+expect "upstream's lines untouched"           bash -c 'diff <(grep -v "# shortcuts-hook" "$1") <(cat "$2"; echo) >/dev/null' _ "$PM6" "$REPO/usr/local/bin/perfmax"
+expect "settings written, reminder on, 2 s"   test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=1 DELAY=2 "
+expect "--status reports the hook"            bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --status | grep -q "reminder=1 delay=2 hook=present"' _ "$SC" "$R6"
+cp "$REPO/usr/local/bin/perfmax" "$PM6"                                # an OTA update replaced perfmax
+printf 'REMINDER=0\nDELAY=4\n' > "$R6/home/ark/.config/shortcuts.conf" # and the user had turned the reminder off
+expect "--repair (self-repair service) exits 0" env BOOTVIDEO_ROOT="$R6" bash "$TOOL" --repair
+expect "hook re-added once"                   test "$(grep -c '# shortcuts-hook' "$PM6")" = "1"
+expect "the user's settings are kept"         test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=0 DELAY=4 "
+expect "--remove-hook gives upstream's file back" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --remove-hook && diff "$3" <(cat "$4"; echo) >/dev/null' _ "$SC" "$R6" "$PM6" "$REPO/usr/local/bin/perfmax"
+expect "pages: system, retroarch, retrorun first; README is not a page" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --pages | tr '\n' ' ')" = "system retroarch retrorun n64 standalone "
+expect "--export copies the pages and the README" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --export)" = "6" -a -f "$R6/roms/shortcuts/README.txt"
+echo "MINE" > "$R6/roms/shortcuts/n64.txt"
+expect "a second export keeps edited files"   test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --export)" = "0" -a "$(cat "$R6/roms/shortcuts/n64.txt")" = "MINE"
+expect "pages shown before a game fit 40 columns" bash -c '! grep -v "^#" "$1"/retroarch.txt "$1"/retrorun.txt "$1"/n64.txt "$1"/standalone.txt | cut -d: -f2- | grep -qE "^.{39,}"' _ "$STX"
+# which page for which launch (the command line EmulationStation runs is given instead of read from /proc)
+SD="$T/sc"; mkdir -p "$SD/user" "$SD/bin" "$SD/real"
+echo 'echo "VAR=PPSSPPSDL" > /home/ark/.config/KILLIT' > "$SD/bin/ppsspp.sh"; echo ': no exit daemon' > "$SD/bin/n64.sh"
+W() { LAUNCH_CMD="$1" SHORTCUTS_DIRS="$SD/user $STX" SHORTCUTS_BIN="$SD/bin" SHORTCUTS_CONF="$SD/none.conf" bash "$LR" --which | sed 's/.* -> //; s|.*/||'; }
+expect "RetroArch launched directly"          test "$(W 'sudo perfmax ondemand /roms/snes/a.sfc; nice -n -19 /usr/local/bin/retroarch -L /home/ark/.config/retroarch/cores/snes9x_libretro.so /roms/snes/a.sfc; sudo perfnorm')" = "retroarch.txt"
+expect "retroarch32 through n64.sh"           test "$(W 'sudo perfmax ondemand /roms/n64/a.n64; nice -n -19 /usr/local/bin/n64.sh retroarch32 parallel_n64 /roms/n64/a.n64; sudo perfnorm')" = "retroarch.txt"
+expect "standalone-Rice through n64.sh"       test "$(W 'sudo perfmax ondemand /roms/n64/a.n64; nice -n -19 /usr/local/bin/n64.sh standalone-Rice Default_Aspect /roms/n64/a.n64; sudo perfnorm')" = "n64.txt"
+expect "rom name with spaces and brackets"    test "$(W 'sudo perfmax ondemand /roms/n64/Super\ Mario\ 64\ \(Europe\).n64; nice -n -19 /usr/local/bin/n64.sh standalone-Glide64mk2 Default_Aspect /roms/n64/Super\ Mario\ 64\ \(Europe\).n64; sudo perfnorm')" = "n64.txt"
+expect "retrorun32 through dreamcast.sh"      test "$(W 'sudo perfmax ondemand /roms/dreamcast/a.chd; nice -n -19 /usr/local/bin/dreamcast.sh retrorun32 flycast /roms/dreamcast/a.chd; sudo perfnorm')" = "retrorun.txt"
+expect "PPSSPP standalone (exit daemon)"      test "$(W 'sudo perfmax ondemand /roms/psp/a.iso; nice -n -19 /usr/local/bin/ppsspp.sh standalone /roms/psp/a.iso; sudo perfnorm')" = "standalone.txt"
+expect "a port: no page, no reminder"         test "$(W 'sudo perfmax ondemand /roms/ports/Game.sh; /roms/ports/Game.sh; sudo perfnorm')" = "none"
+printf 'MY RICE PAGE\n' > "$SD/user/n64.standalone-Rice.txt"
+expect "your own page for one emulator wins"  test "$(W 'sudo perfmax ondemand /roms/n64/a.n64; nice -n -19 /usr/local/bin/n64.sh standalone-Rice Default_Aspect /roms/n64/a.n64; sudo perfnorm')" = "n64.standalone-Rice.txt"
+# the real thing: no hint, the helper finds the launching shell among its ancestors
+printf '#!/bin/bash\nSHORTCUTS_DIRS="%s" SHORTCUTS_BIN="%s" SHORTCUTS_CONF=/nonexistent bash "%s" --which\n' "$STX" "$SD/bin" "$LR" > "$SD/real/perfmax"
+printf '#!/bin/bash\nexit 0\n' > "$SD/real/n64.sh"; chmod 755 "$SD/real/perfmax" "$SD/real/n64.sh"
+expect "emulator read from the launching shell" bash -c 'test "$(sh -c "$1/perfmax ondemand /roms/n64/a.n64; nice -n -19 $1/n64.sh standalone-Rice Default_Aspect /roms/n64/a.n64; true" | sed "s/.* -> //; s|.*/||")" = "n64.txt"' _ "$SD/real"
+# what gets printed (stdin is not a terminal there either: over SSH, on a pts, the helper stays quiet)
+RA_CMD='sudo perfmax ondemand /roms/snes/a.sfc; nice -n -19 /usr/local/bin/retroarch -L x /roms/snes/a.sfc; sudo perfnorm'
+printf 'REMINDER=1\nDELAY=0\n' > "$SD/on.conf"; printf 'REMINDER=0\nDELAY=0\n' > "$SD/off.conf"; : > "$SD/tty"
+expect "reminder printed on the console"      bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "RETROARCH" "$5" && grep -q "START ........ quit the game" "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/on.conf" "$SD/tty"
+expect "notes (# lines) are not printed"      bash -c '! grep -q "retroarch.cfg" "$1"' _ "$SD/tty"
+printf '\xef\xbb\xbfMY TITLE\r\n# note\r\nSELECT + B ... quit\r\n' > "$SD/user/retroarch.txt"; : > "$SD/tty"   # saved by Windows Notepad
+expect "a page edited on Windows prints cleanly" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "MY TITLE" "$5" && grep -q "SELECT + B ... quit" "$5" && ! grep -q "note" "$5" && ! grep -q "$(printf "\r")" "$5" && ! grep -q "$(printf "\357\273\277")" "$5"' _ "$LR" "$RA_CMD" "$SD/user $STX" "$SD/on.conf" "$SD/tty"
+: > "$SD/tty"
+expect "nothing printed when the reminder is off" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && test ! -s "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/off.conf" "$SD/tty"
 
 echo "== helper --rebuild (gamelist + thumbnails)"
 if command -v ffmpeg >/dev/null; then

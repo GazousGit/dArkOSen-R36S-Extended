@@ -1,0 +1,9 @@
+RETRORUN
+# dArkOSen's retrorun.cfg sets retrorun_alternative_input_mode = true; the combinations for
+# that mode come from retrorun's doc/CONTROLS.md.
+Hold SELECT and press:
+ START ........ quit the game
+ X ............ menu (settings)
+ A ............ pause
+ Y ............ show the FPS
+ B ............ screenshot

@@ -1,0 +1,5 @@
+STANDALONE EMULATOR
+# Shown for the emulators dArkOSen closes with its exit daemon (PPSSPP, DraStic, Saturn,
+# Flycast, ScummVM, ECWolf, Doom, Pico-8...). To give one of them its own page, add
+# <launcher>.txt next to this file: ppsspp.txt, drastic.txt, saturn.txt, dreamcast.txt...
+SELECT + START ... quit the game
