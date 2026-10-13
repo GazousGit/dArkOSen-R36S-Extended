@@ -131,8 +131,13 @@ fi
 N64TOOL="$OVERLAY/opt/system/Advanced/N64 Tuning (mupen64plus-next).sh"
 RACO="$ROOT/home/ark/.config/retroarch/retroarch-core-options.cfg"
 if [ -f "$N64TOOL" ] && [ -f "$RACO" ]; then
-    bash "$N64TOOL" --fast "$RACO"
+    bash "$N64TOOL" --wiki "$RACO"
     echo "inject: N64 preset -> $(grep -c '^mupen64plus-' "$RACO") mupen64plus lines in ${RACO#"$ROOT"}"
+fi
+ESSET="$ROOT/home/ark/.emulationstation/es_settings.cfg"
+if [ -f "$N64TOOL" ] && [ -f "$ESSET" ]; then
+    bash "$N64TOOL" --es-default "$ESSET"
+    echo "inject: N64 default emulator -> $(grep -c '<string name="n64\.' "$ESSET") line(s) in ${ESSET#"$ROOT"} (retroarch / mupen64plus_next)"
 fi
 
 echo "inject: installing Boot Video Manager into $ROOT"
