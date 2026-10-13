@@ -1,0 +1,14 @@
+SYSTEM KEYS
+# From dArkOSen's hotkey daemon (OGAGE/README.md and OGAGE/src/main.rs in the repository).
+# Left out because that documentation and that source disagree: Hotkey + LEFT / RIGHT and
+# Hotkey + L2 / R2 (volume or gamma).
+Hotkey = FN, or R3 (press the right stick)
+ Hotkey + UP / DOWN .... brightness
+ Hotkey + VOL + / - .... brightness
+ Hotkey + L1 / R1 ...... volume
+ Hotkey + L3 ........... mute on/off
+ Hotkey + POWER ........ safe shutdown
+ POWER (short press) ... sleep
+ SELECT + R3 ........... battery level, spoken
+ SELECT + L1 ........... Wi-Fi on/off
+ SELECT + R1 ........... Bluetooth on/off

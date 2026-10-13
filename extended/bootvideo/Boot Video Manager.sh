@@ -70,6 +70,7 @@ D_ES_CFG="/etc/emulationstation/es_systems.cfg"
 D_TOOL="/opt/system/System/Boot Video Manager.sh"
 D_SEED="/usr/share/dArkOSen-Extended/bootvideos"   # videos shipped inside a built image
 D_OVERLAY="/usr/share/dArkOSen-Extended/overlay"   # extra tools shipped inside a built image
+D_SHORTCUTS="/opt/system/Shortcuts.sh"             # one of them: owns a hook in perfmax
 # ---- the same paths on this machine ($ROOT is empty on the device) ----
 SEED="$ROOT$D_SEED"
 PLAYER="$ROOT$D_PLAYER"
@@ -516,6 +517,8 @@ Do_Repair() {
         if Add_ES_Entry; then Log "ES entry: OK"; else Log "ES entry: FAILED ($D_ES_CFG missing?)"; rc=1; fi
     fi
     if Install_Service; then Log "self-repair service: OK"; else Log "self-repair service: FAILED"; rc=1; fi
+    # Shortcuts tool: its launch-reminder hook, which an OTA update removes when it replaces perfmax
+    if [ -f "$ROOT$D_SHORTCUTS" ]; then SHORTCUTS_ROOT="$ROOT" bash "$ROOT$D_SHORTCUTS" --repair || rc=1; fi
     if [ -z "$ROOT" ] && [ -d "$VID_DIR" ]; then "$PLAYER" --rebuild; fi
     return $rc
 }

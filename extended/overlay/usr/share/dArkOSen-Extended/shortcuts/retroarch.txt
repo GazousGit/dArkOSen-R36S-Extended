@@ -1,0 +1,11 @@
+RETROARCH
+# From /home/ark/.config/retroarch/retroarch.cfg as shipped by dArkOSen 09302026 (the 32-bit
+# build has the same bindings): hotkey = button 12 (SELECT), menu = "hold SELECT" combo.
+Hold SELECT and press:
+ START ........ quit the game
+ B / A ........ save / load state
+ X / Y ........ next / previous slot
+ RIGHT ........ fast-forward on/off
+ R3 ........... pause
+ R2 ........... reset
+Menu: hold SELECT for 2 seconds
