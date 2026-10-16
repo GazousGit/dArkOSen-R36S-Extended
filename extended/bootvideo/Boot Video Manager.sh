@@ -37,6 +37,11 @@
 # playlists in bootvideos/.playlists/<name>.txt (one file
 # name per line, editable on a PC); applying one moves the
 # files so that exactly those videos play.
+# Volume: option 4 sets the mixer level for every boot video;
+# a single video can be louder or quieter than the others
+# (A on it in EmulationStation, or option 4 > Per video),
+# stored in bootvideos/.volumes.txt as "file name=percent"
+# (10..300, applied as a software gain by ffplay).
 # =======================================================
 # MIT License - same terms as dArkOSen.
 
@@ -134,6 +139,7 @@ cat > "$PLAYER" <<'PLAYER_EOF'
 #   bootvideo.sh --menu FILE  -> EmulationStation launch menu
 #   bootvideo.sh --preview F  -> play one file now
 #   bootvideo.sh --rebuild    -> thumbnails + gamelist.xml
+#   bootvideo.sh --volume FILE [PERCENT] -> show / set the level of one video
 CONF="${BOOTVIDEO_CONF:-/home/ark/.config/bootvideo.conf}"
 DONE="/dev/shm/.bootvideo_done"
 ENABLED=0; SOUND=1; VOLUME=0; MAXLEN=15; MODE=random; FILE=""; DIR=""
@@ -143,6 +149,33 @@ if [ -z "$DIR" ] || [ ! -d "$DIR" ]; then
   for d in /roms/bootvideos /roms2/bootvideos; do [ -d "$d" ] && DIR="$d" && break; done
 fi
 EXTS=(mp4 mkv webm gif)
+VOLS="$DIR/.volumes.txt"   # per-video level: one "file name=percent" per line, 100 = as is
+VOL_LEVELS=(25 50 75 100 125 150 200 300)
+
+video_volume() {   # $1 = file or name; prints its level in percent (100 when not set)
+  local n line v=100
+  n=$(basename "$1")
+  [ -f "$VOLS" ] && while IFS= read -r line; do
+    [ "${line%=*}" = "$n" ] && v="${line##*=}"
+  done < "$VOLS"
+  [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 10 ] && [ "$v" -le 300 ] || v=100
+  echo "$v"
+}
+set_video_volume() {   # $1 = file or name, $2 = percent (10..300; 100 removes the entry)
+  local n line
+  n=$(basename "$1")
+  [[ "$2" =~ ^[0-9]+$ ]] && [ "$2" -ge 10 ] && [ "$2" -le 300 ] || { echo "level must be 10..300" >&2; return 1; }
+  { [ -f "$VOLS" ] && while IFS= read -r line; do
+      [ -n "$line" ] && [ "${line%=*}" != "$n" ] && echo "$line"
+    done < "$VOLS"
+    [ "$2" = 100 ] || echo "$n=$2"
+  } > "$VOLS.tmp" && mv "$VOLS.tmp" "$VOLS"
+  chown ark:ark "$VOLS" 2>/dev/null || chown 1000:1000 "$VOLS" 2>/dev/null
+}
+gain_filter() {   # $1 = file; prints the ffplay -af value for its level, nothing at 100 %
+  local v; v=$(video_volume "$1")
+  [ "$v" = 100 ] || printf 'volume=%d.%02d' $(( v / 100 )) $(( v % 100 ))
+}
 
 list_videos() {   # $1 = folder, prints one path per line (top level only)
   local e f
@@ -202,8 +235,10 @@ restore_volume() {
 }
 
 play() {   # $1 file, $2 max seconds, $3 sound 1/0
-  local args=(-x 1280 -y 720 -loglevel quiet -autoexit -nostats -t "$2")
+  local args=(-x 1280 -y 720 -loglevel quiet -autoexit -nostats -t "$2") gain
   [ "$3" = "1" ] || args+=(-an)
+  # per-video level (bootvideos/.volumes.txt): software gain, so a quiet clip can go above 100 %
+  gain=$(gain_filter "$1"); [ "$3" = "1" ] && [ -n "$gain" ] && args+=(-af "$gain")
   printf "\033c" > /dev/tty1 2>/dev/null
   ensure_volume_keys
   # Boot video volume (VOLUME=0 keeps the system level); the previous level comes back afterwards
@@ -220,7 +255,7 @@ xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/
 rebuild() {
   [ -n "$DIR" ] || exit 0
   mkdir -p "$DIR/disabled" "$DIR/.media"
-  local out="$DIR/gamelist.xml" f rel name thumb sub
+  local out="$DIR/gamelist.xml" f rel name thumb sub lvl
   {
     echo '<?xml version="1.0"?>'
     echo '<gameList>'
@@ -236,14 +271,15 @@ rebuild() {
           # clips shorter than 1 s: ffmpeg exits 0 without writing a frame, so take the first frame instead
           [ -s "$thumb" ] || ffmpeg -nostdin -hide_banner -loglevel error -y -i "$f" -frames:v 1 -vf scale=320:-2 "$thumb" 2>/dev/null
         fi
+        lvl=$(video_volume "$f"); [ "$lvl" = 100 ] && lvl="" || lvl=" Volume $lvl %."
         echo "  <game>"
         echo "    <path>$(echo "$rel" | xml)</path>"
         if [ -z "$sub" ]; then
           echo "    <name>$(echo "$name" | xml)</name>"
-          echo "    <desc>ENABLED - can play at boot. Press A to preview or disable.</desc>"
+          echo "    <desc>ENABLED - can play at boot.$lvl Press A to preview, disable or set the volume.</desc>"
         else
           echo "    <name>$(echo "$name [OFF]" | xml)</name>"
-          echo "    <desc>DISABLED - never plays at boot. Press A to preview or enable.</desc>"
+          echo "    <desc>DISABLED - never plays at boot.$lvl Press A to preview, enable or set the volume.</desc>"
         fi
         [ -f "$thumb" ] && echo "    <image>$(echo "./.media/$(basename "$thumb")" | xml)</image>"
         echo "    <video>$(echo "$rel" | xml)</video>"
@@ -281,16 +317,25 @@ es_menu() {
   setfont /usr/share/consolefonts/Lat7-TerminusBold22x11.psf.gz 2>/dev/null
   printf "\e[?25l\033[H\033[2J" > "$tty"
   start_gp
-  local base state toggle c
+  local base state toggle c lvl l items
   while true; do
     base=$(basename "$f")
     if [ "$(basename "$(dirname "$f")")" = "disabled" ]; then state="DISABLED"; toggle="Enable (play at boot)"
     else state="ENABLED"; toggle="Disable (never play at boot)"; fi
+    lvl=$(video_volume "$f")
     c=$(dialog --clear --no-collapse --cancel-label "Back" --backtitle "Boot Videos" \
-        --title "$base" --menu "Status: $state" 12 52 3 \
-        1 "Preview (with sound)" 2 "$toggle" 2>&1 > "$tty") || break
+        --title "$base" --menu "Status: $state | Volume: $lvl %" 13 52 3 \
+        1 "Preview (with sound)" 2 "$toggle" 3 "Volume of this video ($lvl %)" 2>&1 > "$tty") || break
     case "$c" in
       1) stop_gp; play "$f" 120 1; start_gp ;;
+      3) items=()
+         for l in "${VOL_LEVELS[@]}"; do
+           if [ "$l" = 100 ]; then items+=("$l" "100 % (as recorded)"); else items+=("$l" "$l %"); fi
+         done
+         l=$(dialog --clear --no-collapse --cancel-label "Back" --backtitle "Boot Videos" \
+             --title "$base" --menu "Level of this video only, on top of the boot video volume.\nUse Preview to check it." 18 56 8 \
+             "${items[@]}" 2>&1 > "$tty") || continue
+         set_video_volume "$f" "$l" ;;
       2) if [ "$state" = "ENABLED" ]; then mkdir -p "$DIR/disabled"; mv "$f" "$DIR/disabled/" && f="$DIR/disabled/$base"
          else mv "$f" "$DIR/" && f="$DIR/$base"; fi
          chown ark:ark "$f"
@@ -313,6 +358,9 @@ case "$1" in
   --menu)    es_menu "$2" ;;
   --preview) play "$2" "${3:-120}" 1; exit 0 ;;
   --rebuild) rebuild; exit 0 ;;
+  --volume)  [ -n "$DIR" ] && [ -n "$2" ] || { echo "usage: $0 --volume FILE [PERCENT]" >&2; exit 2; }
+             if [ -n "$3" ]; then set_video_volume "$2" "$3" || exit 1; fi
+             video_volume "$2"; exit 0 ;;
 esac
 
 # ---------------- boot playback ----------------
@@ -708,6 +756,36 @@ Pick_Playlist() {   # $1 = title: prints the chosen playlist name
     out=$(dialog --clear --backtitle "$BACKTITLE" --title "$1" --menu "Playlists in $D_VID_DIR/.playlists" 16 56 8 "${items[@]}" 2>&1 > "$CURR_TTY") || return 1
     echo "$out"
 }
+Video_Volume() {
+    # Level of one video (enabled or disabled), stored by the helper in bootvideos/.volumes.txt
+    shopt -s nullglob nocaseglob
+    local vids=("$VID_DIR"/*.mp4 "$VID_DIR"/*.mkv "$VID_DIR"/*.webm "$VID_DIR"/*.gif
+                "$VID_DIR"/disabled/*.mp4 "$VID_DIR"/disabled/*.mkv "$VID_DIR"/disabled/*.webm "$VID_DIR"/disabled/*.gif)
+    shopt -u nullglob nocaseglob
+    [ ${#vids[@]} -gt 0 ] || { Msg "No videos in $VID_DIR"; return; }
+    local items=() i=1 c v f lvl l tag
+    for v in "${vids[@]}"; do
+        lvl=$("$PLAYER" --volume "$v"); tag=""
+        [ "$(basename "$(dirname "$v")")" = disabled ] && tag=" [OFF]"
+        items+=("$i" "$(basename "$v")$tag - $lvl %"); i=$((i+1))
+    done
+    c=$(dialog --clear --no-collapse --backtitle "$BACKTITLE" --title "Per-video volume" \
+        --menu "Level of one video on top of the boot video volume\n(software gain, so a quiet clip can go above 100 %)" 18 64 8 \
+        "${items[@]}" 2>&1 > "$CURR_TTY") || return
+    f="${vids[$((c-1))]}"; lvl=$("$PLAYER" --volume "$f")
+    items=()
+    for l in 25 50 75 100 125 150 200 300; do
+        if [ "$l" = 100 ]; then items+=("$l" "100 % (as recorded)"); else items+=("$l" "$l %"); fi
+    done
+    l=$(dialog --clear --no-collapse --backtitle "$BACKTITLE" --title "$(basename "$f")" \
+        --menu "Current: $lvl %. Use the preview afterwards to check it." 18 56 8 \
+        "${items[@]}" 2>&1 > "$CURR_TTY") || return
+    "$PLAYER" --volume "$f" "$l" > /dev/null
+    if dialog --clear --backtitle "$BACKTITLE" --yesno "Saved: $l %.\n\nPreview it now?" 8 44 > "$CURR_TTY"; then
+        Stop_GPTKeyb; sudo -u ark "$PLAYER" --preview "$f" "$MAXLEN"; Start_GPTKeyb
+    fi
+}
+
 Select_Videos() {
     local c p r nm total np items
     Select_Current
@@ -805,6 +883,7 @@ while true; do
     [ "$ENABLED" = 1 ] && st="ON" || st="OFF"
     [ "$SOUND" = 1 ] && snd="ON" || snd="OFF"
     [ "${VOLUME:-0}" -gt 0 ] 2>/dev/null && vol="${VOLUME}%" || vol="system"
+    pv=$(grep -c '=' "$VID_DIR/.volumes.txt" 2>/dev/null); [ "${pv:-0}" -gt 0 ] && vol="$vol (+$pv per video)"
     [ "$MODE" = single ] && sel="$FILE" || sel="Random"
 
     CHOICE=$(dialog --clear --no-collapse --cancel-label "Exit" \
@@ -830,9 +909,11 @@ while true; do
         P) Select_Videos ;;
         3) [ "$SOUND" = 1 ] && SOUND=0 || SOUND=1; Save_Conf ;;
         4) m=$(dialog --clear --backtitle "$BACKTITLE" --title "Boot video volume" \
-               --menu "Mixer level used only while the video plays;\nthe previous level comes back afterwards." 18 52 10 \
+               --menu "Mixer level used only while the video plays;\nthe previous level comes back afterwards." 19 56 11 \
                0 "System volume (unchanged)" 30 "30 %" 40 "40 %" 50 "50 %" 60 "60 %" 70 "70 %" 80 "80 %" 90 "90 %" 100 "100 %" \
-               2>&1 > "$CURR_TTY") && { VOLUME=$m; Save_Conf; } ;;
+               V "Per video: one louder or quieter than the others" \
+               2>&1 > "$CURR_TTY") || continue
+           if [ "$m" = V ]; then Video_Volume; else VOLUME=$m; Save_Conf; fi ;;
         5) m=$(dialog --clear --backtitle "$BACKTITLE" --menu "Max length" 14 40 6 \
                5 "5 s" 10 "10 s" 15 "15 s" 30 "30 s" 60 "60 s" 2>&1 > "$CURR_TTY") && { MAXLEN=$m; Save_Conf; } ;;
         6) Convert_Videos ;;
