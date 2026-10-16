@@ -6,8 +6,10 @@
 # video tool (+ self-repair service) and repacks it as a
 # split .7z (parts < 2 GB, GitHub's release asset limit).
 #
-# Only the root filesystem (btrfs) is modified. The EASYROMS
-# partition is left alone: dArkOSen's first boot re-creates
+# The root filesystem (btrfs) gets our additions; on the BOOT
+# partition only broken model selector entries are repaired
+# (fix-boot.sh). The EASYROMS partition is left alone:
+# dArkOSen's first boot re-creates
 # it anyway, so shipped videos are stored on the root
 # filesystem and copied to /roms/bootvideos at boot, and
 # --roms files are appended to the /roms.tar that the first
@@ -56,7 +58,7 @@ while [ $# -gt 0 ]; do
         --name)     NAME=$2; shift 2 ;;
         --keep-img) KEEP_IMG=1; shift ;;
         --no-pack)  NO_PACK=1; shift ;;
-        -h|--help)  sed -n '2,39p' "$0"; exit 0 ;;
+        -h|--help)  sed -n '2,41p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -173,7 +175,7 @@ PARTS=("$LOOP"p*)
 if [ ! -e "${PARTS[0]}" ]; then partprobe "$LOOP" 2>/dev/null || true; sleep 2; PARTS=("$LOOP"p*); fi
 [ -e "${PARTS[0]}" ] || die "no partitions found on $IMG"
 
-ROOTP=""; ROOTTYPE=""
+ROOTP=""; ROOTTYPE=""; BOOTP=""
 for p in "${PARTS[@]}"; do
     t=$(blkid -o value -s TYPE "$p" 2>/dev/null || true)
     l=$(blkid -o value -s LABEL "$p" 2>/dev/null || true)
@@ -186,6 +188,10 @@ for p in "${PARTS[@]}"; do
         else
             log "  (could not mount $p read-only to probe it)"
         fi
+    fi
+    if [ -z "$BOOTP" ] && [ "$t" = vfat ] && mount -o ro "$p" "$WORK/probe" 2>/dev/null; then
+        [ -f "$WORK/probe/boot.ini" ] && [ -d "$WORK/probe/dtb" ] && BOOTP=$p
+        umount "$WORK/probe"
     fi
 done
 [ -n "$ROOTP" ] || die "could not find the dArkOSen root filesystem in the image"
@@ -234,6 +240,20 @@ if [ "$FSCK_BEFORE" -eq 0 ] && [ "$FSCK_AFTER" -ne 0 ]; then
     cat "$WORK/fsck-after.log"
     die "root filesystem check failed after modification"
 fi
+# BOOT partition: model selector entries whose boot.ini names a device tree that is not there
+BOOTFIXED=0
+if [ -n "$BOOTP" ]; then
+    mount "$BOOTP" "$WORK/probe"
+    bash "$HERE/fix-boot.sh" "$WORK/probe" | tee "$WORK/fix-boot.log"
+    BOOTFIXED=$(sed -n 's/^fix-boot: \([0-9]*\) entr.* fixed$/\1/p' "$WORK/fix-boot.log")
+    sync; umount "$WORK/probe"
+    if command -v fsck.vfat >/dev/null; then
+        fsck.vfat -n "$BOOTP" > "$WORK/fsck-boot.log" 2>&1 || die "BOOT partition check failed after the repair: $(tail -3 "$WORK/fsck-boot.log" | tr '\n' ' ')"
+        log "BOOT partition check: clean"
+    fi
+else
+    log "no BOOT partition with a model selector found; nothing to repair there"
+fi
 losetup -d "$LOOP"; LOOP=""
 
 # -------------------------------------------------------
@@ -280,6 +300,9 @@ OURREPO="${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}"
     echo "- **Self-repair service** (\`bootvideo-repair.service\`) that re-attaches the boot video if an OTA update replaces \`emulationstation.sh\` or \`es_systems.cfg\`."
     if [ "${SHIPPED:-0}" -gt 0 ]; then
         echo "- $SHIPPED boot video(s) shipped with the image; they are copied into \`/roms/bootvideos\` on the first regular boot."
+    fi
+    if [ "${BOOTFIXED:-0}" -gt 0 ]; then
+        echo "- **Model selector repaired**: $BOOTFIXED entries (\`R36S-V12 2023-08-18 Panel 4\` among them) had a \`boot.ini\` that loads a device tree missing from their folder, so the kernel started without the board's device tree: picture and sound, but no controls. They now load the device tree of their own folder."
     fi
     if [ "${ROMSFILES:-0}" -gt 0 ]; then
         echo "- $ROMSFILES personal file(s) for the roms partition, extracted into \`/roms\` by the first boot. **This image is a private build: do not publish or share it.**"

@@ -157,7 +157,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq p7zip-full jq btrfs-progs >/dev/null
+          sudo apt-get install -y -qq p7zip-full jq btrfs-progs dosfstools >/dev/null
           sudo modprobe btrfs 2>/dev/null || true
           grep -qw btrfs /proc/filesystems && echo "btrfs: available" || echo "::warning::btrfs is not available in this kernel"
 
