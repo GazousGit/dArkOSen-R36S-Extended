@@ -111,7 +111,7 @@ Hand-off for the next conversation. `components/flycast_32_hack/README.md` has t
 
 ### 8.4 Findings
 
-- **Legacy hack (`flycast32_rumble_hack`)**: the speed comes from metallic77's SH4 cycle multiplier (`reicast_sh4clock`, default `d12` = 165 MHz; our build also reads plain MHz). Not yet judged in play by the user (GTA2, speed vs stock).
+- **Legacy hack (`flycast32_rumble_hack`)**: the speed comes from metallic77's SH4 cycle multiplier (`reicast_sh4clock`, default `d12` = 165 MHz; our build also reads plain MHz). **User test 2026-10-16 evening: GTA2 gives a black screen with our build (`out/gazous-v2`) under both retrorun32 (can quit) and retroarch32 (stuck, no quit).** The 2025 binary from metallic77 had worked for the user; the difference (their `51c45727` build vs our `gazous` branch rebuilt with GCC 14) was not investigated: the user asked to remove both cores instead.
 - **Modern flycast as a 32-bit core** — two bugs found and fixed:
   1. Build: a command-line `CMAKE_CXX_FLAGS` replaced the toolchain's CPU flags, so the core was Debian armhf default (Thumb-2, no NEON); the dynarecs `BL` into C++ from A32 code and aborted in `retro_init` (vixl `Assembler::bl` -> `UnimplementedDelegate`). Fixed in `build-modern.sh` (dArkOSen-Extended `b1110cc`).
   2. Upstream UB in `core/hw/mem/addrspace.cpp`: `addr <<= iirf` shifts by the whole tagged page entry; GCC 14 on armhf folds it to 0, every RAM read lost its in-page offset, the BIOS never ran (black screen, SH4 PC sliding through memory, dynarec and interpreter alike). Fixed by `iirf & HANDLER_MAX` (fork `e0e960683`); worth offering upstream.
@@ -129,6 +129,6 @@ Hand-off for the next conversation. `components/flycast_32_hack/README.md` has t
 
 ### 8.6 Next steps (to decide with the user)
 
-1. Legacy hack: have the user compare `flycast32_rumble_hack` with the stock core (GTA2, a few heavy games, SH4 clock 125-165 MHz); if it is better, ship it in images (build it in the workflow from the fork) and maybe a profile-guided build.
+1. **Both cores are being removed from the console** (user decision 2026-10-16 evening, after the GTA2 black screen): `device-remove.sh` does it (core and `.info` files, the 6 ES core lines, ES core choices naming them, per-core RetroArch folders, `flycast_*` option keys; refuses while a game runs). Nothing of this goes into images. If the legacy hack is ever picked up again: start from metallic77's own `51c45727` binary, which worked for the user, and bisect against our rebuild.
 2. Modern 32-bit: WinCE is dropped (8.1), so the only reason left to keep `flycast32_modern` is if modern flycast ran ordinary games better than the legacy cores on the R36S; Code Veronica hanging suggests not. Decide with the user: either try one or two ordinary games with it, or remove it from the console (core, `.info`, the 6 ES core lists; `es_systems.cfg.before-flycast32` holds the pre-install lists) and from `device-install.sh`. The option prefix is done (`flycast_`, build `out/modern-dArkOSen-5`); keep the fork branch either way.
 3. Offer the addrspace fix upstream (flyinghead/flycast); it is independent of our use. Branch `addrspace-shift-fix` on the fork is ready (see 8.2); opening the pull request is the user's call.

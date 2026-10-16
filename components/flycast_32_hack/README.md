@@ -8,8 +8,10 @@ Two 32-bit flycast libretro cores for dArkOSen on the R36S, to install beside Ar
 | `flycast32_rumble_hack` | metallic77's low-end fork of the legacy core + our fixes | Faster on many games (GTA2...), SH4 underclock option |
 | `flycast32_modern` | flyinghead's current flycast (v2.7) built for armhf | Its ARM32 dynarec emulates the MMU: Windows CE games (Resident Evil 2...) can boot |
 
-**Status (end of 2026-10-16):** both installed on one console with `device-install.sh`
-(`out/gazous-v2`, `out/modern-dArkOSen-5`). `flycast32_rumble_hack` is not yet judged in play.
+**Status (end of 2026-10-16): both cores dropped.** They were installed on one console with
+`device-install.sh` (`out/gazous-v2`, `out/modern-dArkOSen-5`) and are removed again with
+`device-remove.sh`. `flycast32_rumble_hack` as rebuilt here gives a black screen on GTA2 under both
+retrorun32 and retroarch32 (the user's 2025 binary from metallic77 had worked; not investigated).
 `flycast32_modern` is **not usable for games**: with the two fixes below it boots the Dreamcast
 BIOS and shows Resident Evil 2's Windows CE logo, then hits heap corruption; Code Veronica hangs at
 once. It now keeps its options apart from the legacy cores (`flycast_` prefix). The Windows CE goal
