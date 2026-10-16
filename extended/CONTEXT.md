@@ -87,12 +87,47 @@ The original plan (private repo, files committed under `extended/seed/`, a seedi
 - GitHub: the GitHub connector token reads but cannot create PRs; PRs are created with the token from Git Credential Manager (`git credential fill`), not printed. No `gh` CLI locally. Workflow runs/annotations: `api.github.com/repos/GazousGit/dArkOSen-R36S-Extended/actions/runs` and `.../check-runs/<job id>/annotations` (public today; need the token once private).
 - Workflow behaviour: push to `main` or `ext/**` touching `extended/` runs the check; branch runs publish drafts or skip; `main` promotes drafts and rebuilds when the `extended/` tree hash changed; `workflow_dispatch` has `tag`, `force`, `draft`, `level`.
 
-## 8. Dreamcast cores (flycast, `components/flycast_32_hack/`, started 2026-10-16)
+## 8. Dreamcast cores (flycast, `components/flycast_32_hack/`) — state at the end of 2026-10-16
 
-`components/flycast_32_hack/README.md` has the details; the essentials:
+Hand-off for the next conversation. `components/flycast_32_hack/README.md` has the technical detail (what metallic77 changed, build flags, option names).
 
-- Goal: the faster "hacked" 32-bit flycast the user tested in 2025 (GTA2 runs better), improved, and Windows CE games (Resident Evil 2) playable. Its author, metallic77, deleted their Reddit messages; the whole history survives in `metallic77/flycast32_rumble` branch `dev`. The user's old binary (`flycast32_rumble_hack_libretro.so`, their ES entry "flycast32_rumble_hack") is their commit `51c45727` of 2025-06-19.
-- Forks (made 2026-10-16 through the Git Credential Manager token; the connector token gets 403 on forks too): `GazousGit/flycast32_rumble` (branches `gazous` = our fixes, `arkos-stock` = rebuild of dArkOSen's core) and `GazousGit/flycast` (branch `dArkOSen` = flyinghead upstream + R36S motor rumble, library name "Flycast32 Modern"). Local clones in `components/flycast_32_hack/` are git-ignored.
-- dArkOSen's retroarch32/retrorun32 Dreamcast default `flycast32_rumble` is legacy `libretro/flycast` `4c293f3` + ArkOS patches. Its 64-bit `flycast_libretro.so` is legacy code too; the only modern flycast in the image is the 64-bit standalone `/opt/flycastsa/flycast` v2.7. The legacy ARM32 dynarec has no MMU translation (WinCE hangs at the logo); modern flycast's ARM32 dynarec has it.
-- Builds in the WSL chroot `/root/flycast-build/trixie` (Debian trixie, armhf cross GCC 14 = the image's glibc/libstdc++): `build.sh` (legacy) and `build-modern.sh` (CMake, GLES3). `device-install.sh [host]` installs `flycast32_rumble_hack` and `flycast32_modern` beside `flycast32_rumble` in all 6 ES core lists (backup `es_systems.cfg.before-flycast32`).
-- Not tried on a device yet. The user offered SSH access to a console for tests.
+### 8.1 Goal and what the user decided
+
+- Two aims: (1) the faster "hacked" 32-bit flycast the user tested in 2025 (GTA2 runs better), improved; (2) Windows CE games playable, above all Resident Evil 2 (only RE3 gets past the WinCE logo on the legacy cores).
+- New cores go **beside** ArkOS's `flycast32_rumble`, never over it (the user had an ES entry "flycast32_rumble_hack" for the 2025 binary). Forks of the sources live on GazousGit; local clones are git-ignored, our scripts and README are committed (the user agreed to keep `components/` tracked; the alternative, moving them to the fork, was offered and not chosen).
+
+### 8.2 Sources, forks, local layout
+
+- metallic77 (DariusG) deleted their posts; the full history is in `metallic77/flycast32_rumble` branch `dev` (and `metallic77/flycast` `603814c`, pinned by Knulli/ROCKNIX). The 2025 binary = their commit `51c45727`. Base = `libretro/flycast` `4c293f3`, the same source as dArkOSen's stock `flycast32_rumble` (+ ArkOS patches).
+- Forks (made through the Git Credential Manager token; the GitHub connector gets 403 on forks and PRs): `GazousGit/flycast32_rumble` (branches `gazous` = our fixes, output `flycast32_rumble_hack`; `arkos-stock` = rebuild of the stock core) and `GazousGit/flycast` (branch `dArkOSen` = flyinghead v2.7-66 + R36S motor code + library name "Flycast32 Modern" + the addrspace fix, head `e0e960683`).
+- `components/flycast_32_hack/`: `build.sh <ref> <name>` (legacy, Makefile, `platform=classic_armv8_a35`), `build-modern.sh <name>` (CMake, GLES3, **must stay ARM mode**: `-marm -mcpu=cortex-a35 -mfpu=neon-fp-armv8`), `armhf-toolchain.cmake`, `device-install.sh [host]`, `tools/abort-trace.c`. Clones `flycast32_rumble/`, `flycast/` and builds `out/<name>/` are git-ignored. Build chroot: WSL `/root/flycast-build/trixie` (Debian trixie armhf cross GCC 14 = the image's glibc 2.41 / libstdc++). Useful builds: `out/gazous-v2` (legacy hack, installed), `out/modern-dArkOSen-4` (modern with both fixes, not installed).
+
+### 8.3 What is on the console (192.168.1.159, card flashed with the 15:09 private image)
+
+- Updated by hand to the PR #8 state: themes es-simple-theme / es-theme-nes-box / es-theme-retrooz in `/roms/themes`, `GamelistViewStyle = video`, 10 s reminder (live and self-repair copies), N64 gamelist (the card's was malformed: 153 games outside `<gameList>`; replaced by the 181-game one with the one play record merged; backups `*.before-pr8`, `/usr/share/dArkOSen-Extended/backup-pr8/`).
+- `~/.config/retroarch32/cores/`: `flycast32_rumble_hack` (= `out/gazous-v2`) and `flycast32_modern` (**the black-screen build**, ARM mode but without the addrspace fix: do not use), both listed after `flycast32_rumble` in the 6 ES core lists (Dreamcast, Naomi, Atomiswave × retroarch32, retrorun32; backup `es_systems.cfg.before-flycast32`).
+- `retroarch32/retroarch-core-options.cfg` restored to the image's copy (md5 `ad1986c2…`): my modern-core test runs had rewritten it (cable type "VGA (RGB)" -> "TV (Composite)", texupscale, 31 new keys); the modified one is kept as `.after-flycast-tests`. RE2 Disc 1's RetroArch auto save state was overwritten by a test and then deleted (it was the legacy core's, frozen at the WinCE logo).
+
+### 8.4 Findings
+
+- **Legacy hack (`flycast32_rumble_hack`)**: the speed comes from metallic77's SH4 cycle multiplier (`reicast_sh4clock`, default `d12` = 165 MHz; our build also reads plain MHz). Not yet judged in play by the user (GTA2, speed vs stock).
+- **Modern flycast as a 32-bit core** — two bugs found and fixed:
+  1. Build: a command-line `CMAKE_CXX_FLAGS` replaced the toolchain's CPU flags, so the core was Debian armhf default (Thumb-2, no NEON); the dynarecs `BL` into C++ from A32 code and aborted in `retro_init` (vixl `Assembler::bl` -> `UnimplementedDelegate`). Fixed in `build-modern.sh` (dArkOSen-Extended `b1110cc`).
+  2. Upstream UB in `core/hw/mem/addrspace.cpp`: `addr <<= iirf` shifts by the whole tagged page entry; GCC 14 on armhf folds it to 0, every RAM read lost its in-page offset, the BIOS never ran (black screen, SH4 PC sliding through memory, dynarec and interpreter alike). Fixed by `iirf & HANDLER_MAX` (fork `e0e960683`); worth offering upstream.
+  - With both fixes: Dreamcast BIOS animation renders; RE2 reaches the "SEGA / Powered by Windows CE" screen at 15 s, then glibc **"double free or corruption (!prev)"**; **Code Veronica hangs at once** (RetroArch must be SIGKILLed). Earlier builds also hit a SIGSEGV in a Thumb system library when RetroArch unloads the core.
+  - It must get its own option prefix before real use (ROCKNIX renames `reicast_` -> `flycast_`): it shares `reicast_*` keys with the legacy cores and RetroArch rewrites the shared options file at every unload.
+- **64-bit standalone flycast v2.7 (`standalone-Flycast`), user test**: RE2 at 10-30 fps (Dreamcast = 50/60), 50/60 Hz prompt, brightness prompt, then a frozen black screen (its menu still opens). So even modern flycast on the best-tested ARM path does not run RE2 on the R36S, and is far from full speed: **WinCE games look out of reach on this hardware for now**; a 32-bit build would not close that gap.
+- Rumble: on dArkOSen the pad driver ("GO-Super Gamepad") owns the motor and offers force feedback (EV_FF/FF_RUMBLE); `/sys/class/pwm/*/pwm0` never exists, so the sysfs motor code in both cores is a no-op there; rumble goes through the frontend. dArkOSen's retroarch32 options ship `reicast_enable_purupuru = "disabled"`.
+- The user's whistling noise: random, only with ES background music; likely the audio amplifier, unrelated to this work.
+
+### 8.5 How to test a core on the console without side effects
+
+- Stop ES first (`sudo systemctl stop emulationstation`), set governors with `sudo perfmax performance <rom>` (over SSH the reminder stays quiet), restart ES and run `perfnorm` afterwards. Never run two sessions' builds at once: `/root/darkosen-ext/tools/build10.sh` runs `losetup -D`.
+- Run `/opt/retroarch/bin/retroarch32 -c ~/.config/retroarch32/retroarch.cfg --appendconfig=<file> -L <core> <rom>` with an appendconfig holding `config_save_on_exit = "false"`, `savestate_auto_load = "false"`, `savestate_auto_save = "false"`, `core_options_path = "/tmp/fc-opts.cfg"` (a copy of the real options), `game_specific_options = "false"`, `video_threaded = "false"`, `screenshot_directory = "/tmp/shots"`, `sort_screenshots_by_content_enable = "false"`. Screenshots on demand: `echo -n SCREENSHOT > /dev/udp/127.0.0.1/55356` (network commands are on, port 55356); check them against the stock core first. Wrap in `timeout -k 5 N` (retrorun32 ignores SIGTERM).
+- Debugging: no gdb/strace on the device. `tools/abort-trace.c` (LD_PRELOAD, build in the chroot) prints the stack (lib+offset, exported names) when `abort()` is called; glibc's own heap-corruption aborts bypass it. In release builds flycast compiles out `INFO_LOG`/`DEBUG_LOG`: use `NOTICE_LOG` for temporary diagnostics. The modern core is linked with `-s` (`LINK_FLAGS_RELEASE`); for symbols, build once without it (`-g` does not change the code).
+
+### 8.6 Next steps (to decide with the user)
+
+1. Legacy hack: have the user compare `flycast32_rumble_hack` with the stock core (GTA2, a few heavy games, SH4 clock 125-165 MHz); if it is better, ship it in images (build it in the workflow from the fork) and maybe a profile-guided build.
+2. Modern 32-bit: only worth more work if WinCE becomes realistic; otherwise drop it. If continued: backtrace the RE2 double free (SIGABRT handler or a symbol build) and the Code Veronica hang, add the `flycast_` option prefix, then install `out/modern-dArkOSen-4`-based builds. Either way remove or replace the black-screen `flycast32_modern` on the console.
+3. Offer the addrspace fix upstream (flyinghead/flycast); it is independent of our use.
