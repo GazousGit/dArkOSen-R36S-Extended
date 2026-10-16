@@ -12,6 +12,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 TOOL="$REPO/extended/bootvideo/Boot Video Manager.sh"
 INJECT="$REPO/extended/build/inject.sh"
 BUILD="$REPO/extended/build/build-image.sh"
+FIXBOOT="$REPO/extended/build/fix-boot.sh"
 T=$(mktemp -d)
 trap 'umount "$T/root9" 2>/dev/null; rm -rf "$T"' EXIT
 PASS=0; FAILED=0
@@ -69,10 +70,12 @@ echo "== syntax"
 expect "bash -n Boot Video Manager.sh" bash -n "$TOOL"
 expect "bash -n inject.sh"             bash -n "$INJECT"
 expect "bash -n build-image.sh"        bash -n "$BUILD"
+expect "bash -n fix-boot.sh"          bash -n "$FIXBOOT"
 if command -v shellcheck >/dev/null; then
     expect "shellcheck Boot Video Manager.sh" shellcheck -S warning -e SC1090,SC1091,SC2016,SC2024 "$TOOL"
     expect "shellcheck inject.sh"             shellcheck -S warning "$INJECT"
     expect "shellcheck build-image.sh"        shellcheck -S warning -e SC2016 "$BUILD"
+    expect "shellcheck fix-boot.sh"          shellcheck -S warning "$FIXBOOT"
     expect "shellcheck run-tests.sh"          shellcheck -S warning -e SC2016 "$0"
 else
     echo "  skip shellcheck (not installed)"
@@ -283,6 +286,27 @@ fi
 RG="$REPO/extended/roms/.gitignore"
 expect "extended/roms ignores every file"     grep -qx '\*' "$RG"
 expect "only .gitignore and README.md are kept in git" test "$(grep -c '^!' "$RG")" = "2"
+
+echo "== fix-boot.sh: model selector entries whose boot.ini names a missing device tree"
+B="$T/boot"; mkdir -p "$B/dtb/r36s/R36S-V12 2023-08-18 Panel 4" "$B/dtb/r36s/R36S-V12 2023-08-18 Panel 0" "$B/dtb/r36s/Two candidates"
+mkini() { printf 'odroidgoa-uboot-config\r\nsetenv dtb_loadaddr "0x01f00000"\r\nload mmc 1:1 ${loadaddr} Image\r\nload mmc 1:1 ${dtb_loadaddr} %s\r\nbooti ${loadaddr} ${initrd_loadaddr} ${dtb_loadaddr}\r\n' "$2" > "$1"; }
+P4="$B/dtb/r36s/R36S-V12 2023-08-18 Panel 4"; P0="$B/dtb/r36s/R36S-V12 2023-08-18 Panel 0"; TWO="$B/dtb/r36s/Two candidates"
+mkini "$B/boot.ini" rk3326-r36s-linux.dtb; touch "$B/rk3326-r36s-linux.dtb"
+mkini "$P4/boot.ini" rk3326-r36h-linux.dtb; touch "$P4/rk3326-r36s-linux.dtb" "$P4/rg351mp-uboot.dtb"     # as in the 09302026 image
+mkini "$P0/boot.ini" rk3326-r36s-linux.dtb; touch "$P0/rk3326-r36s-linux.dtb" "$P0/rg351mp-uboot.dtb"
+mkini "$TWO/boot.ini" rk3326-x-linux.dtb; touch "$TWO/rk3326-a-linux.dtb" "$TWO/rk3326-b-linux.dtb"
+cp "$P4/boot.ini" "$T/p4.ini.orig"; cp "$P0/boot.ini" "$T/p0.ini.orig"; cp "$TWO/boot.ini" "$T/two.ini.orig"
+OUTF=$(bash "$FIXBOOT" "$B" 2>&1); RC=$?
+expect "fix-boot.sh exits 0"                  test "$RC" = "0"
+expect "reports one entry fixed"              grep -qx 'fix-boot: 1 entry fixed' <<<"$OUTF"
+expect "Panel 4 now loads the dtb of its folder" grep -q 'load mmc 1:1 ${dtb_loadaddr} rk3326-r36s-linux.dtb' "$P4/boot.ini"
+expect "only that line changed"               test "$(diff "$T/p4.ini.orig" "$P4/boot.ini" | grep -c '^[<>]')" = "2"
+expect "Windows line endings kept"            test "$(grep -c $'\r$' "$P4/boot.ini")" = "5"
+expect "consistent entries untouched"         cmp -s "$T/p0.ini.orig" "$P0/boot.ini"
+expect "ambiguous entry left alone"           cmp -s "$T/two.ini.orig" "$TWO/boot.ini"
+expect "and reported"                         grep -q 'Two candidates: boot.ini loads rk3326-x-linux.dtb, which is missing; 2 candidate' <<<"$OUTF"
+expect "second run fixes nothing"             bash -c 'bash "$1" "$2" | grep -qx "fix-boot: 0 entries fixed"' _ "$FIXBOOT" "$B"
+expect "not a BOOT partition: fails"          bash -c '! bash "$1" "$2" 2>/dev/null' _ "$FIXBOOT" "$T/vids"
 
 echo "== overlay tool: Dreamcast Tuning (retrorun)"
 DC="$REPO/extended/overlay/opt/system/Advanced/Dreamcast Tuning (retrorun).sh"

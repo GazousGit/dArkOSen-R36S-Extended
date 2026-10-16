@@ -54,6 +54,12 @@ The same pages feed a **reminder shown before each game**: `perfmax`, the script
 
 The pages are plain text files in `/usr/share/dArkOSen-Extended/shortcuts/`. A file of the same name in `/roms/shortcuts/` replaces the built-in one, so they can be corrected from a PC; the tool's *Copy the texts* option puts editable copies there, with a `README.txt` on the naming rules (`<launcher>.<emulator>.txt`, `retroarch.txt`, `retrorun.txt`, `<launcher>.txt`, `standalone.txt`). No matching page, no reminder. The built-in texts were taken from the configuration files of the 09302026 image and from retrorun's documentation, not measured on a device: check them against yours.
 
+### Model selector: two broken entries, and how to pick yours
+
+The model selector (`SELECT MODEL.exe` on the BOOT partition) copies one folder of `BOOT/dtb/` (a `boot.ini` and the device trees) to the root of the partition. In the 09302026 image two folders name a kernel device tree they do not contain: **`r36s/R36S-V12 2023-08-18 Panel 4`** loads `rk3326-r36h-linux.dtb` and `r36s/HL-R46H-V22 2026-03-12` loads `rk3326-r45h-linux.dtb`. The bootloader then starts the kernel with its own minimal device tree, which has the screen but no controller: the picture and sound are fine, EmulationStation asks to configure a controller and only the power button answers. Built images repair this (`extended/build/fix-boot.sh`: when a folder's `boot.ini` names a missing device tree and the folder holds exactly one `*-linux.dtb`, `boot.ini` is pointed at it). On a card flashed with the official image, open `boot.ini` on the BOOT partition after selecting Panel 4 and replace `rk3326-r36h-linux.dtb` with `rk3326-r36s-linux.dtb`.
+
+To find the right entry for a unit, compare the device tree of its factory card (`rk3326-rg351mp-linux.dtb` on the stock BOOT partition) with the selector's: the screen is the `panel@0` node (init sequence and timings), the controls the `odroidgo3-joypad` node. Examples from the factory cards checked so far: "R36S-V12 2023-08-18" boards with the factory model string "Game Console R35S/R36S fix by lxc" and a 29 MHz panel match **`R36S-V21 2024-12-18 2547`** exactly (screen and controls); an "R36S-V21 2024-12-18" board with the 58 MHz panel matches **`R36S-V21 2024-12-18 2544`** (identical to `R36S-V22 2024-12-18 2545` and `2548`).
+
 ### Known upstream issue: no sound in 32-bit emulators on the 09302026 image
 
 The 09302026 image ships Debian's 32-bit ALSA library, which produces no audio on this kernel, so retrorun32 and retroarch32 (Dreamcast, Naomi, N64 32-bit cores and others) are silent. djparentx fixed it in the **09302026b** OTA update (custom 32-bit `libasound` 1.2.8 plus new retrorun/retrorun32/retroarch32 binaries), which the image does not include. Run *Options > System > Update-dArkOSen* once (Wi-Fi) after flashing; the Dreamcast tool's audio check tells you whether it is installed. The offline package is on the [dArkOSen-updates 09302026b release](https://github.com/djparentx/dArkOSen-updates/releases/tag/09302026b).
@@ -72,6 +78,7 @@ extended/
   overlay/                          extra tools, laid out like the device tree (copied into the image)
   build/build-image.sh              download upstream release -> mount -> inject -> repack .7z
   build/inject.sh                   applies our additions to a mounted root filesystem
+  build/fix-boot.sh                 repairs model selector entries on the BOOT partition
   tests/run-tests.sh                offline tests (Linux, root)
 ```
 
@@ -82,7 +89,7 @@ extended/
 **Build image** (`.github/workflows/build-image.yml`, daily 05:23 UTC, on pushes that touch `extended/`, and on demand).
 
 1. Looks up the latest upstream release tag (or the one given) and checks whether a `<tag>-ext` release exists here.
-2. If not, downloads the upstream `.7z` parts, extracts the `.img` (about 8.2 GB), attaches it with `losetup`, mounts the root partition (btrfs), runs `inject.sh`, verifies the filesystem with `btrfs check`, repacks the image as a split `.7z` (parts under 2 GB) and publishes a release with SHA-256 sums and release notes. The boot (FAT) and EASYROMS (exFAT) partitions are not touched. Roughly 30 to 60 minutes.
+2. If not, downloads the upstream `.7z` parts, extracts the `.img` (about 8.2 GB), attaches it with `losetup`, mounts the root partition (btrfs), runs `inject.sh`, verifies the filesystem with `btrfs check`, repacks the image as a split `.7z` (parts under 2 GB) and publishes a release with SHA-256 sums and release notes. The EASYROMS (exFAT) partition is not touched. On the boot (FAT) partition only broken model selector entries are repaired (see below), then the partition is checked with `fsck.vfat`. Roughly 30 to 60 minutes.
 3. Builds started from any branch other than `main` are published as **drafts**. When the branch is merged, the push to `main` promotes the draft to a published release instead of rebuilding.
 
 Manual run options: `tag`, `force` (delete and rebuild), `draft`, `level` (7z compression level).
