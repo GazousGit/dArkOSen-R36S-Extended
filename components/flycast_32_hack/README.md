@@ -8,7 +8,10 @@ Two 32-bit flycast libretro cores for dArkOSen on the R36S, to install beside Ar
 | `flycast32_rumble_hack` | metallic77's low-end fork of the legacy core + our fixes | Faster on many games (GTA2...), SH4 underclock option |
 | `flycast32_modern` | flyinghead's current flycast (v2.7) built for armhf | Its ARM32 dynarec emulates the MMU: Windows CE games (Resident Evil 2...) can boot |
 
-**Status: built, not yet tried on a device.** Nothing here is part of the image build yet.
+**Status (2026-10-16):** both installed on one console with `device-install.sh`, not yet judged
+in play. `flycast32_modern` starts and runs Resident Evil 2 in retroarch32 (first minute at full
+speed) and in retrorun32; whether it gets past the Windows CE logo is still to be seen on screen.
+Nothing here is part of the image build yet.
 
 ## Sources
 
@@ -64,7 +67,11 @@ metallic77 (DariusG) shared their core on Reddit in 2025 and later deleted their
 1. **Rumble back**, with the ArkOS patch's sysfs files and values, but written by a helper thread
    instead of `system("echo ... && sleep 0.4 ...")` / `sudo tee` on the emulation thread for every
    vibration command. The motor runs while the game asks for a strength above 0, at least 400 ms
-   per pulse, and is switched off when the game unloads.
+   per pulse, and is switched off when the game unloads. **On the R36S with dArkOSen this path is
+   inactive**: the pad driver ("GO-Super Gamepad") offers force feedback (EV_FF, FF_RUMBLE) and owns
+   the PWM, so `/sys/class/pwm/pwmchip*/pwm0` never exists there. Rumble then goes through the
+   frontend (RetroArch's udev force feedback), as with the stock core; dArkOSen's retroarch32
+   options ship `reicast_enable_purupuru = "disabled"`, so the vibration pack must be turned on.
 2. **`reicast_sh4clock` fallback**: when the frontend returns no value, the multiplier stayed 0
    (blocks cost no cycles). It now falls back to the option default (x1.2). A plain number is read
    as MHz, so `retrorun.cfg` can say `reicast_sh4clock = 125`, the same format as modern flycast.
@@ -92,7 +99,18 @@ Checked in the sources and the 10152026 image, for both cores:
 - Quit: the frontend's, not the core's: retroarch32 Select (hotkey, button 12) + Start (exit,
   button 13); retrorun32 Select + Start.
 
-Not checked yet: whether retrorun32 sets up the GLES3 context modern flycast asks for.
+**The core must be compiled in ARM (A32) mode.** The SH4 and ARM7 dynarecs call C++ functions
+with a direct `BL` from A32 code, which cannot reach Thumb functions (odd addresses), and Debian's
+armhf compiler defaults to Thumb-2, ARMv7, VFPv3-D16, no NEON. Built that way, the core aborted in
+`retro_init` (`aica::arm::init` -> `arm7backend_flush` -> `vixl::aarch32::Assembler::bl` ->
+`UnimplementedDelegate`), which sent ES straight back. `build-modern.sh` passes
+`-marm -mcpu=cortex-a35 -mfpu=neon-fp-armv8 -mfloat-abi=hard`; `readelf -A` on the result shows
+`Tag_CPU_arch: v8` and `NEON for ARMv8`.
+
+Open points seen on the device: RetroArch screenshots of this core come out black (threaded video
+on or off), so progress past the WinCE logo has to be checked on screen; on exit, RetroArch hits a
+SIGSEGV in a system library while unloading the game (it still returns to ES); retrorun32 ignores
+SIGTERM (quit it with the pad).
 
 ## Build
 
@@ -111,9 +129,10 @@ chroot /root/flycast-build/trixie bash -c 'dpkg --add-architecture armhf && apt-
   ArkOS's flags (`platform=classic_armv8_a35 FORCE_GLES=1`, `ngen_arm.S` through gcc). GCC 14
   needs `-fpermissive` for the bundled libzip's implicit declarations.
 - `./build-modern.sh <name>`: modern core from the current checkout of `flycast/`, with CMake and
-  `armhf-toolchain.cmake` (GLES3, OpenMP, no Vulkan, bundled zlib/libzip, no Lua). `LOW_END`
-  picks handheld defaults: DSP off, per-strip sorting, auto skip frame "some", GD-ROM fast loading.
-  The core needs only libc, libstdc++ and libgomp.
+  `armhf-toolchain.cmake` (GLES3, OpenMP, no Vulkan, bundled zlib/libzip, no Lua), in ARM mode for
+  the Cortex-A35 with NEON (see above). `LOW_END` picks handheld defaults: DSP off, per-strip
+  sorting, auto skip frame "some", GD-ROM fast loading. The core needs only libc, libstdc++ and
+  libgomp.
 
 Output: `out/<name>/` with the stripped core, `build.log` and `commit.txt`.
 
