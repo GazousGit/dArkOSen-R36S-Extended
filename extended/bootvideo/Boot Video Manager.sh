@@ -26,6 +26,17 @@
 #   --install-root DIR    offline install into a mounted image
 #                         root (used by the image build)
 #   --uninstall-root DIR  offline uninstall (tests)
+#   --select all|none     every video plays / none does
+#   --select-list FILE    exactly the videos named in FILE
+#                         (one file name per line) play
+#   --playlist NAME       same, from a saved playlist
+#
+# Which videos play: the ones directly in <roms>/bootvideos;
+# disabled/ holds the others. "Videos that play" in the menu
+# ticks them (all, none, search, from the list) and saves
+# playlists in bootvideos/.playlists/<name>.txt (one file
+# name per line, editable on a PC); applying one moves the
+# files so that exactly those videos play.
 # =======================================================
 # MIT License - same terms as dArkOSen.
 
@@ -38,6 +49,9 @@ Boot Video Manager v$VERSION (dArkOSen Extended)
   $(basename "$0") --repair             re-attach hook / ES entry / helper, no UI
   $(basename "$0") --install-root DIR   offline install into a mounted image root
   $(basename "$0") --uninstall-root DIR offline uninstall
+  $(basename "$0") --select all|none    every video plays / no video plays
+  $(basename "$0") --select-list FILE   exactly the videos named in FILE play
+  $(basename "$0") --playlist NAME      exactly the videos of a saved playlist play
 EOF
 }
 
@@ -47,6 +61,9 @@ case "${1:-}" in
     --repair)         CLI=repair ;;
     --install-root)   CLI=install;   ROOT="${2:?usage: --install-root DIR}" ;;
     --uninstall-root) CLI=uninstall; ROOT="${2:?usage: --uninstall-root DIR}" ;;
+    --select)         CLI=select;     SEL_ARG="${2:?usage: --select all|none}" ;;
+    --select-list)    CLI=selectlist; SEL_ARG="${2:?usage: --select-list FILE}" ;;
+    --playlist)       CLI=playlist;   SEL_ARG="${2:?usage: --playlist NAME}" ;;
     --version)        echo "Boot Video Manager v$VERSION"; exit 0 ;;
     -h|--help)        Usage; exit 0 ;;
     "") ;;
@@ -547,7 +564,73 @@ Do_Uninstall() {
     Log "uninstalled (videos in $D_VID_DIR kept; delete '$D_TOOL' to remove the tool itself)"
 }
 
+# =======================================================
+# Which videos play: all / none / a list / a saved playlist
+# (they play when directly in bootvideos/, not in disabled/)
+# =======================================================
+PLAYLISTS="$VID_DIR/.playlists"
+declare -A SEL=()
+MISSING=0
+Video_Names() {   # $1 = on | off | all: file names, one per line, sorted
+    local d e f
+    shopt -s nullglob nocaseglob
+    for d in "$VID_DIR" "$VID_DIR/disabled"; do
+        if [ "$1" = on ] && [ "$d" != "$VID_DIR" ]; then continue; fi
+        if [ "$1" = off ] && [ "$d" = "$VID_DIR" ]; then continue; fi
+        for e in mp4 mkv webm gif; do for f in "$d"/*."$e"; do basename "$f"; done; done
+    done | sort -fu
+    shopt -u nullglob nocaseglob
+}
+Select_All()     { local n; SEL=(); while IFS= read -r n; do SEL["$n"]=1; done < <(Video_Names all); }
+Select_None()    { SEL=(); }
+Select_Current() { local n; SEL=(); while IFS= read -r n; do SEL["$n"]=1; done < <(Video_Names on); }
+Select_From_File() {   # $1 = list: one file name per line (# notes and blank lines skipped); sets MISSING
+    local n have
+    SEL=(); MISSING=0
+    have=$(Video_Names all)
+    while IFS= read -r n || [ -n "$n" ]; do
+        n=${n%$'\r'}; n=${n#$'\xef\xbb\xbf'}
+        case "$n" in ""|\#*) continue ;; esac
+        if grep -qixF -- "$n" <<<"$have"; then n=$(grep -ixF -m1 -- "$n" <<<"$have"); SEL["$n"]=1; else MISSING=$((MISSING + 1)); fi
+    done < "$1"
+}
+Playlist_Names() { [ -d "$PLAYLISTS" ] && find "$PLAYLISTS" -maxdepth 1 -type f -name '*.txt' -printf '%f\n' | sed 's/\.txt$//' | sort -f; }
+Save_Playlist() {   # $1 = name: writes the ticked videos
+    mkdir -p "$PLAYLISTS"
+    if [ ${#SEL[@]} -gt 0 ]; then printf '%s\n' "${!SEL[@]}" | sort -f > "$PLAYLISTS/$1.txt"; else : > "$PLAYLISTS/$1.txt"; fi
+    OwnR "$PLAYLISTS"
+}
+Apply_Selection() {   # moves the files so that exactly the ticked videos play; prints a summary
+    local n moved=0 on=0 clash=0
+    mkdir -p "$VID_DIR/disabled"
+    while IFS= read -r n; do
+        if [ -n "${SEL[$n]:-}" ]; then
+            on=$((on + 1))
+            if [ -e "$VID_DIR/disabled/$n" ]; then
+                if [ -e "$VID_DIR/$n" ]; then clash=$((clash + 1)); else mv "$VID_DIR/disabled/$n" "$VID_DIR/" && moved=$((moved + 1)); fi
+            fi
+        elif [ -e "$VID_DIR/$n" ]; then
+            if [ -e "$VID_DIR/disabled/$n" ]; then clash=$((clash + 1)); else mv "$VID_DIR/$n" "$VID_DIR/disabled/" && moved=$((moved + 1)); fi
+        fi
+    done < <(Video_Names all)
+    OwnR "$VID_DIR"
+    Load_Conf
+    # a fixed boot video that is no longer ticked: back to random
+    if [ "$MODE" = single ] && { [ -z "$FILE" ] || [ -z "${SEL[$FILE]:-}" ]; }; then MODE=random; FILE=""; Save_Conf; fi
+    if [ -z "$ROOT" ] && [ -x "$PLAYER" ]; then "$PLAYER" --rebuild; fi
+    echo "$on video(s) play at boot ($moved moved)$([ "$clash" -gt 0 ] && echo ", $clash left alone: same name in both folders")"
+}
+
 case "$CLI" in
+    select)
+        case "$SEL_ARG" in all) Select_All ;; none) Select_None ;; *) echo "--select takes all or none" >&2; exit 1 ;; esac
+        Apply_Selection; exit 0 ;;
+    selectlist|playlist)
+        if [ "$CLI" = playlist ]; then L="$PLAYLISTS/$SEL_ARG.txt"; else L="$SEL_ARG"; fi
+        [ -f "$L" ] || { echo "bootvideo: $L not found" >&2; exit 1; }
+        Select_From_File "$L"; Apply_Selection
+        [ "$MISSING" -gt 0 ] && echo "$MISSING listed video(s) not found in $D_VID_DIR"
+        exit 0 ;;
     repair)    Do_Repair; exit $? ;;
     install)   Do_Install_Offline; exit $? ;;
     uninstall) Do_Uninstall; exit 0 ;;
@@ -597,6 +680,74 @@ Pick_Video() {
     Save_Conf
 }
 
+# "Videos that play": tick videos (all, none, search, list), save/load playlists
+Tick() {   # $1 = text to search for (empty = every video): checklist, updates SEL for the videos shown
+    local q="${1,,}" n i=0 out items=() names=()
+    while IFS= read -r n; do
+        [ -z "$q" ] || [[ "${n,,}" == *"$q"* ]] || continue
+        names+=("$n"); i=$((i + 1))
+        if [ -n "${SEL[$n]:-}" ]; then items+=("$i" "${n%.*}" on); else items+=("$i" "${n%.*}" off); fi
+    done < <(Video_Names all)
+    [ ${#names[@]} -gt 0 ] || { Msg "No video matches \"$1\"."; return; }
+    out=$(dialog --clear --backtitle "$BACKTITLE" --title "Tick the videos that play" --separate-output \
+          --checklist "${#names[@]} video(s)${1:+ matching \"$1\"}. X ticks / unticks." 20 64 12 "${items[@]}" 2>&1 > "$CURR_TTY") || return
+    for n in "${names[@]}"; do unset "SEL[$n]"; done
+    while IFS= read -r i; do [ -n "$i" ] && SEL["${names[$((i - 1))]}"]=1; done <<<"$out"
+}
+Type_Text() {   # $1 = prompt: dArkOSen's on-screen keyboard; prints what was typed
+    local t
+    t=$(osk "$1" | tail -n 1)
+    setfont /usr/share/consolefonts/Lat7-TerminusBold22x11.psf.gz 2>/dev/null
+    printf "\e[?25l\033[H\033[2J" > "$CURR_TTY"
+    echo "$t"
+}
+Pick_Playlist() {   # $1 = title: prints the chosen playlist name
+    local p out items=()
+    while IFS= read -r p; do items+=("$p" ""); done < <(Playlist_Names)
+    [ ${#items[@]} -gt 0 ] || return 1
+    out=$(dialog --clear --backtitle "$BACKTITLE" --title "$1" --menu "Playlists in $D_VID_DIR/.playlists" 16 56 8 "${items[@]}" 2>&1 > "$CURR_TTY") || return 1
+    echo "$out"
+}
+Select_Videos() {
+    local c p r nm total np items
+    Select_Current
+    while true; do
+        total=$(Video_Names all | grep -c .)
+        np=$(Playlist_Names | grep -c .)
+        items=(S "Search, then tick videos" T "Tick from the whole list" A "Select all" N "Unselect all")
+        [ "$np" -gt 0 ] && items+=(L "Load a playlist ($np saved)")
+        items+=(W "Save the ticked videos as a playlist")
+        [ "$np" -gt 0 ] && items+=(D "Delete a playlist")
+        items+=(K "Done: these videos play at boot")
+        c=$(dialog --clear --no-collapse --cancel-label "Back" --backtitle "$BACKTITLE" --title "Videos that play at boot" \
+            --menu "Ticked: ${#SEL[@]} of $total. Nothing changes until Done or Save.\nBack leaves the current videos as they are." \
+            18 60 9 "${items[@]}" 2>&1 > "$CURR_TTY") || return
+        case "$c" in
+            S) Tick "$(Type_Text "Search boot videos (part of a name)")" ;;
+            T) Tick "" ;;
+            A) Select_All ;;
+            N) Select_None ;;
+            L) if p=$(Pick_Playlist "Load a playlist"); then
+                   Select_From_File "$PLAYLISTS/$p.txt"
+                   [ "$MISSING" -gt 0 ] && Msg "$MISSING video(s) of \"$p\" are no longer in $D_VID_DIR."
+               fi ;;
+            W) nm=$(Type_Text "Playlist name" | tr -cd 'A-Za-z0-9 _-' | cut -c1-30)
+               nm=$(echo "$nm" | sed 's/^ *//; s/ *$//')
+               if [ -n "$nm" ]; then
+                   Save_Playlist "$nm"; r=$(Apply_Selection)
+                   Ask_Restart "Saved as \"$nm\".\n$r\n\nThe Boot Videos list in ES updates after a restart."
+                   return
+               fi ;;
+            D) if p=$(Pick_Playlist "Delete a playlist") && dialog --clear --backtitle "$BACKTITLE" --yesno "Delete the playlist \"$p\"?\n(The videos stay.)" 9 50 > "$CURR_TTY"; then
+                   rm -f "$PLAYLISTS/$p.txt"
+               fi ;;
+            K) r=$(Apply_Selection)
+               Ask_Restart "$r\n\nThe Boot Videos list in ES updates after a restart."
+               return ;;
+        esac
+    done
+}
+
 # =======================================================
 # Gamepad / display
 # =======================================================
@@ -632,6 +783,7 @@ if grep -q 'name="InvertButtons" value="true"' /home/ark/.emulationstation/es_se
 else
     sed -i 's/^a = .*/a = enter/; s/^b = .*/b = esc/' "$TMP_KEYS"
 fi
+sed -i 's/^x = .*/x = space/' "$TMP_KEYS"      # X ticks / unticks in checklists
 Start_GPTKeyb
 trap 'Exit_Menu' EXIT
 
@@ -661,6 +813,7 @@ while true; do
         20 64 10 \
         1 "Turn boot video ON / OFF" \
         2 "Choose video (or random)" \
+        P "Videos that play: all, none, search, playlists" \
         3 "Toggle sound" \
         4 "Boot video volume" \
         5 "Max length" \
@@ -674,6 +827,7 @@ while true; do
     case "$CHOICE" in
         1) [ "$ENABLED" = 1 ] && ENABLED=0 || ENABLED=1; Save_Conf ;;
         2) Pick_Video ;;
+        P) Select_Videos ;;
         3) [ "$SOUND" = 1 ] && SOUND=0 || SOUND=1; Save_Conf ;;
         4) m=$(dialog --clear --backtitle "$BACKTITLE" --title "Boot video volume" \
                --menu "Mixer level used only while the video plays;\nthe previous level comes back afterwards." 18 52 10 \

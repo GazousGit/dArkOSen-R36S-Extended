@@ -13,7 +13,7 @@ dArkOSen, dArkOS and ArkOS are the work of their respective authors (MIT). Pleas
 | --- | --- |
 | Playback | Before EmulationStation starts, a random video from `/roms/bootvideos` (or `/roms2/bootvideos` when roms are on SD2) plays full screen with `ffplay`, the same player dArkOSen uses for the game loading video. Once per boot, not when ES restarts, not over SSH, not in the BaRT recovery menu. |
 | Skip | A, B, X, Y or Start. Volume keys and Fn combinations are left to `ogage`, so volume and brightness keep working during the video and never skip it. |
-| Manage | *Options > System > Boot Video Manager*: on/off, random or one fixed video, sound, volume (mixer level used only during the video, the previous level comes back afterwards), max length (5 to 60 s), converter (640x480 H.264 baseline + AAC), preview, repair, uninstall. |
+| Manage | *Options > System > Boot Video Manager*: on/off, random or one fixed video, which videos play (select all, unselect all, search with the on-screen keyboard, tick from the list, playlists saved in `bootvideos/.playlists/<name>.txt` that replace the list when applied; X ticks), sound, volume (mixer level used only during the video, the previous level comes back afterwards), max length (5 to 60 s), converter (640x480 H.264 baseline + AAC), preview, repair, uninstall. |
 | EmulationStation | A **Boot Videos** system lists the videos with thumbnails and video previews. Press A on one to preview it or to enable/disable it (disabled videos move to `bootvideos/disabled`). |
 | Self-repair | `bootvideo-repair.service` runs before ES at every boot (after `/roms` is mounted) and re-attaches the hook and the ES entry if an OTA update replaced `emulationstation.sh` or `es_systems.cfg`. It also creates `/roms/bootvideos` and copies videos shipped with a built image into it, once. |
 
@@ -27,7 +27,7 @@ Files on the device:
 | `/home/ark/.config/bootvideo.conf` | Settings: `ENABLED SOUND MAXLEN MODE FILE DIR ES_ENTRY`. |
 | `/usr/bin/emulationstation/emulationstation.sh` | One added line tagged `# bootvideo-hook`; backup `.pre-bootvideo`. |
 | `/etc/emulationstation/es_systems.cfg` | Added `bootvideos` system; backup `.pre-bootvideo`. |
-| `/roms/bootvideos/` | Your videos (mp4, mkv, webm, gif). `disabled/` for videos that must not play, `.media/` thumbnails, `.originals/` kept by the converter, `gamelist.xml`. |
+| `/roms/bootvideos/` | Your videos (mp4, mkv, webm, gif), directly in the folder (other subfolders are not played). `disabled/` for videos that must not play, `.playlists/` saved playlists (one file name per line), `.media/` thumbnails, `.originals/` kept by the converter, `gamelist.xml`. |
 | `/usr/share/dArkOSen-Extended/bootvideos/` | Videos shipped with a built image (seeded into `/roms/bootvideos` at boot). Built images only. |
 | `/etc/dArkOSen-Extended.release` | Build stamp. Built images only. |
 
