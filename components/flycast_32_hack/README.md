@@ -8,10 +8,11 @@ Two 32-bit flycast libretro cores for dArkOSen on the R36S, to install beside Ar
 | `flycast32_rumble_hack` | metallic77's low-end fork of the legacy core + our fixes | Faster on many games (GTA2...), SH4 underclock option |
 | `flycast32_modern` | flyinghead's current flycast (v2.7) built for armhf | Its ARM32 dynarec emulates the MMU: Windows CE games (Resident Evil 2...) can boot |
 
-**Status (end of 2026-10-16):** both installed on one console with `device-install.sh`.
-`flycast32_rumble_hack` is not yet judged in play. `flycast32_modern` is **not usable**: with the
-two fixes below it boots the Dreamcast BIOS and shows Resident Evil 2's Windows CE logo, then hits
-heap corruption; Code Veronica hangs at once. Even the 64-bit modern standalone (v2.7) runs RE2 at
+**Status (end of 2026-10-16):** both installed on one console with `device-install.sh`
+(`out/gazous-v2`, `out/modern-dArkOSen-5`). `flycast32_rumble_hack` is not yet judged in play.
+`flycast32_modern` is **not usable for games**: with the two fixes below it boots the Dreamcast
+BIOS and shows Resident Evil 2's Windows CE logo, then hits heap corruption; Code Veronica hangs at
+once. It now keeps its options apart from the legacy cores (`flycast_` prefix). Even the 64-bit modern standalone (v2.7) runs RE2 at
 10-30 fps and freezes after its brightness prompt, so WinCE games look out of reach on the R36S for
 now. Hand-off notes: `extended/CONTEXT.md` section 8. Nothing here is part of the image build yet.
 
@@ -90,8 +91,13 @@ modern 32-bit core can boot WinCE games; how fast is for the device to tell. It 
 `reicast_sh4clock` (values in MHz) and `reicast_auto_skip_frame`.
 
 The `dArkOSen` branch adds the same motor rumble as above and the library name "Flycast32 Modern",
-so RetroArch keeps its per-game options apart from the legacy "Flycast" core. The option prefix stays
-`reicast_`, so dArkOSen's existing `retrorun.cfg` and `retroarch-core-options.cfg` keys apply.
+so RetroArch keeps its per-game options apart from the legacy "Flycast" core. Since `a873b38cf` its
+options use the prefix **`flycast_`** (as ROCKNIX does) instead of `reicast_`: the legacy cores and
+this one share `retroarch-core-options.cfg`, and RetroArch rewrites that file at every unload with
+the values the running core knows, so with a shared prefix the modern core replaced values of the
+legacy cores (cable type "VGA (RGB)" became "TV (Composite)"). dArkOSen's `reicast_*` keys therefore
+do not apply to it; its own `flycast_*` keys appear in the file after its first run. VMU saves stay
+shared (`<saves>/reicast/`).
 
 Checked in the sources and the 10152026 image, for both cores:
 - BIOS: `<system dir>/dc/`; retroarch32 has `system_directory = /roms/bios`, retrorun32 gets
@@ -119,10 +125,8 @@ memory with both the dynarec and the interpreter). Shifting by `iirf & HANDLER_M
 Still open with both fixes: Resident Evil 2 reaches the "SEGA / Powered by Windows CE" screen,
 then glibc reports `double free or corruption (!prev)`; Code Veronica hangs at once (RetroArch
 must be SIGKILLed); earlier builds also hit a SIGSEGV in a system library when RetroArch unloads
-the core. The option prefix must change (`flycast_`, as ROCKNIX does) before real use: RetroArch
-rewrites the options file it shares with the legacy cores at every unload and replaced values the
-modern core does not know (cable type "VGA (RGB)" became "TV (Composite)"). `tools/abort-trace.c`
-and `extended/CONTEXT.md` 8.5 describe how to test and debug on the console.
+the core. `tools/abort-trace.c` and `extended/CONTEXT.md` 8.5 describe how to test and debug on
+the console.
 
 ## Build
 
