@@ -80,6 +80,12 @@ if command -v shellcheck >/dev/null; then
 else
     echo "  skip shellcheck (not installed)"
 fi
+for f in "$REPO"/components/flycast_32_hack/*.sh; do
+    expect "bash -n flycast_32_hack/$(basename "$f")" bash -n "$f"
+    if command -v shellcheck >/dev/null; then
+        expect "shellcheck flycast_32_hack/$(basename "$f")" shellcheck -S warning "$f"
+    fi
+done
 for f in "$REPO"/extended/overlay/opt/system/Advanced/*.sh "$REPO"/extended/overlay/opt/system/*.sh "$REPO"/extended/overlay/usr/local/bin/*; do
     expect "bash -n $(basename "$f")" bash -n "$f"
     if command -v shellcheck >/dev/null; then
