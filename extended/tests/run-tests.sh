@@ -80,6 +80,12 @@ if command -v shellcheck >/dev/null; then
 else
     echo "  skip shellcheck (not installed)"
 fi
+for f in "$REPO"/components/flycast_32_hack/*.sh; do
+    expect "bash -n flycast_32_hack/$(basename "$f")" bash -n "$f"
+    if command -v shellcheck >/dev/null; then
+        expect "shellcheck flycast_32_hack/$(basename "$f")" shellcheck -S warning "$f"
+    fi
+done
 for f in "$REPO"/extended/overlay/opt/system/Advanced/*.sh "$REPO"/extended/overlay/opt/system/*.sh "$REPO"/extended/overlay/usr/local/bin/*; do
     expect "bash -n $(basename "$f")" bash -n "$f"
     if command -v shellcheck >/dev/null; then
@@ -518,6 +524,37 @@ printf '\xef\xbb\xbfMY TITLE\r\n# note\r\nSELECT + B ... quit\r\n' > "$SD/user/r
 expect "a page edited on Windows prints cleanly" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "MY TITLE" "$5" && grep -q "SELECT + B ... quit" "$5" && ! grep -q "note" "$5" && ! grep -q "$(printf "\r")" "$5" && ! grep -q "$(printf "\357\273\277")" "$5"' _ "$LR" "$RA_CMD" "$SD/user $STX" "$SD/on.conf" "$SD/tty"
 : > "$SD/tty"
 expect "nothing printed when the reminder is off" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && test ! -s "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/off.conf" "$SD/tty"
+
+echo "== which videos play: all / none / list / playlist"
+RP="$T/rootpl"; make_root "$RP"; bash "$TOOL" --install-root "$RP" >/dev/null
+BV="$RP/roms/bootvideos"
+for v in "Sega Logo.mp4" "PS1.MP4" "Intro & co.mkv"; do echo x > "$BV/$v"; done
+echo x > "$BV/disabled/Old one.webm"
+on()  { (cd "$BV" && find . -maxdepth 1 -type f \( -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.gif' \) -printf '%f\n' | sort -f | tr '\n' '|'); }
+off() { (cd "$BV/disabled" && find . -maxdepth 1 -type f -printf '%f\n' | sort -f | tr '\n' '|'); }
+OUTP=$(env BOOTVIDEO_ROOT="$RP" bash "$TOOL" --select none 2>&1)
+expect "--select none: no video plays"        test -z "$(on)" -a "$(off)" = "Intro & co.mkv|Old one.webm|PS1.MP4|Sega Logo.mp4|"
+expect "and says so"                          grep -q '^0 video(s) play at boot (3 moved)' <<<"$OUTP"
+expect "--select all: every video plays"      bash -c 'env BOOTVIDEO_ROOT="$2" bash "$1" --select all >/dev/null' _ "$TOOL" "$RP"
+expect "all four at the top, disabled/ empty" test "$(on)" = "Intro & co.mkv|Old one.webm|PS1.MP4|Sega Logo.mp4|" -a -z "$(off)"
+printf 'Sega Logo.mp4\r\nps1.mp4\r\n# a note\r\n\r\nGone.mp4\r\n' > "$T/list.txt"            # saved by Windows Notepad
+sed -i 's/^MODE=.*/MODE=single/; s/^FILE=.*/FILE="Intro \& co.mkv"/' "$RP/home/ark/.config/bootvideo.conf"
+OUTP=$(env BOOTVIDEO_ROOT="$RP" bash "$TOOL" --select-list "$T/list.txt" 2>&1)
+expect "--select-list: exactly the listed videos play" test "$(on)" = "PS1.MP4|Sega Logo.mp4|" -a "$(off)" = "Intro & co.mkv|Old one.webm|"
+expect "names match without case, notes skipped" grep -q '^2 video(s) play at boot' <<<"$OUTP"
+expect "a listed video that is gone is reported" grep -q '^1 listed video(s) not found' <<<"$OUTP"
+expect "fixed video no longer ticked: back to random" grep -qx 'MODE=random' "$RP/home/ark/.config/bootvideo.conf"
+mkdir -p "$BV/.playlists"; printf 'Old one.webm\n' > "$BV/.playlists/Retro.txt"
+expect "--playlist NAME applies a saved playlist" bash -c 'env BOOTVIDEO_ROOT="$2" bash "$1" --playlist Retro >/dev/null' _ "$TOOL" "$RP"
+expect "only that playlist's video plays"     test "$(on)" = "Old one.webm|"
+expect "an unknown playlist fails"            bash -c '! env BOOTVIDEO_ROOT="$2" bash "$1" --playlist Nope 2>/dev/null' _ "$TOOL" "$RP"
+echo x > "$BV/Old one.webm.dup"; echo x > "$BV/disabled/PS1.MP4.keep"
+expect "files that are not videos are left alone" test -f "$BV/Old one.webm.dup" -a -f "$BV/disabled/PS1.MP4.keep"
+echo x > "$BV/disabled/Old one.webm"                                  # same name in both folders
+OUTP=$(env BOOTVIDEO_ROOT="$RP" bash "$TOOL" --select none 2>&1)
+expect "a name in both folders is not overwritten" grep -q 'left alone: same name in both folders' <<<"$OUTP"
+expect "both copies still there"              test -f "$BV/Old one.webm" -a -f "$BV/disabled/Old one.webm"
+expect "X ticks in the menus (mapped to Space)" grep -q "sed -i 's/^x = .\*/x = space/' \"\$TMP_KEYS\"" "$TOOL"
 
 echo "== helper --rebuild (gamelist + thumbnails)"
 if command -v ffmpeg >/dev/null; then

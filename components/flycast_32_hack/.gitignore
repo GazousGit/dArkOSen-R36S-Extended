@@ -1,0 +1,8 @@
+# Clones of the forks (see README.md), build outputs, binaries and logs stay local.
+/flycast/
+/flycast32_rumble/
+/out/
+*.so
+*.log
+# Local copy of a Reddit thread whose author deleted their messages: not republished.
+/conv1.txt

@@ -296,7 +296,7 @@ OURREPO="${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}"
     echo
     echo "## What is added"
     echo
-    echo "- **Boot Video Manager** in *Options > System*: on/off, random or fixed video, sound, max length, converter, preview, repair, uninstall."
+    echo "- **Boot Video Manager** in *Options > System*: on/off, random or fixed video, which videos play (all, none, search, playlists), sound, volume, max length, converter, preview, repair, uninstall."
     echo "- **Boot video at startup** (random, skip with A/B/X/Y/Start, volume keys keep working), enabled by default; nothing plays until there are videos in \`/roms/bootvideos\`."
     echo "- **\"Boot Videos\" system in EmulationStation** with thumbnails and video previews; press A on a video to preview it or to enable/disable it."
     echo "- **Self-repair service** (\`bootvideo-repair.service\`) that re-attaches the boot video if an OTA update replaces \`emulationstation.sh\` or \`es_systems.cfg\`."

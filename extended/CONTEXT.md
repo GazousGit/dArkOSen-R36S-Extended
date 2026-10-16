@@ -1,12 +1,12 @@
 # dArkOSen-R36S-Extended — hand-off context
 
-Last updated 2026-10-11 (evening). Read this first when continuing the work in a new conversation. It records what exists, what state the repo and the device are in, the facts learned about dArkOSen that are not written anywhere else, and how personal files (BIOS, videos, settings) get into locally built images.
+Last updated 2026-10-16. Read this first when continuing the work in a new conversation. It records what exists, what state the repo and the device are in, the facts learned about dArkOSen that are not written anywhere else, and how personal files (BIOS, videos, settings) get into locally built images.
 
 ## 1. What this project is
 
 - Fork of [djparentx/dArkOSen-R36S](https://github.com/djparentx/dArkOSen-R36S) at `GazousGit/dArkOSen-R36S-Extended` (a real GitHub fork). Owner: Nathan (GitHub `GazousGit`, device user `ark`).
 - Goal: a random **boot video** on the R36S, plus automation: daily upstream-sync PR, automatic rebuild of every upstream release image with our additions, self-repair after OTA updates. Since then: extra tools (A/B swap, Dreamcast/N64 tuning, PPSSPP sync).
-- Everything of ours is under `extended/` and `.github/workflows/`. Upstream files are untouched except `.gitattributes` (binary rules) and a 2-line banner at the top of `README.md`. `extended/README.md` is the user-facing documentation.
+- Everything of ours is under `extended/` and `.github/workflows/`, plus `components/` for work on emulator cores that is not part of the image build (section 8). Upstream files are untouched except `.gitattributes` (binary rules) and a 2-line banner at the top of `README.md`. `extended/README.md` is the user-facing documentation.
 - Upstream has **zero pull requests and Issues disabled**; djparentx uploads files directly. Nothing was cherry-picked from forks or from dArkOSRE (decided: keep a pure mirror + our folder).
 
 ## 2. Repo state
@@ -14,7 +14,8 @@ Last updated 2026-10-11 (evening). Read this first when continuing the work in a
 | Where | State |
 | --- | --- |
 | `main` | PR #1 to #4 merged: boot video + automation, volume option, `extended/overlay/` with 4 Advanced tools, PPSSPP sync, confirm/back buttons follow ES, `--roms` support for personal files (section 6), N64 tool on the ArkOS wiki settings with per-game option files, N64 default emulator set in built images, rebuild check fixed, *Options > Shortcuts* and the reminder before each game (PR #4, merged 2026-10-13). Upstream published **10152026**; the pipeline built and published **`10152026-ext`** on 2026-10-15 by itself (09302026-ext stays). |
-| branch `ext/selector-fix`, **PR #5** | Model selector repair (`fix-boot.sh`, section 4, "Model selector"). 281 offline checks pass. Written and verified against the 09302026 image; whether 10152026 still has the two broken entries is not checked (the release notes of the next build say what was repaired). Merging it rebuilds the latest `-ext` release. |
+| `main`, 2026-10-16 | PR #5 merged (model selector repair, `fix-boot.sh`, section 4 "Model selector") and PR #6 merged (root filesystem written compressed, section 6). |
+| branch `ext/bootvideo-playlists`, **PR #7** (open) | Boot Video Manager entry "Videos that play: all, none, search, playlists" (ticks through `dialog` and dArkOSen's `osk`, playlists in `bootvideos/.playlists/`, `--select`, `--select-list`, `--playlist`), and `components/flycast_32_hack/` (section 8). `main` merged in after PR #6. Menus and cores not tried on a device. |
 | working tree only | `extended/roms/` holds the user's personal files (git-ignored, never pushed): `bios/` 502 files 76 MB (mirror of `IgnoreMe/import/bios`), `bootvideos/` 9 videos 3 MB, `psp/ppsspp{,-2021}/PSP/SYSTEM/` 610 settings files 4 MB. |
 
 The repository stays **public**: GitHub does not allow changing the visibility of a fork ("For security reasons, you cannot change the visibility of a fork"). The user's decision (2026-10-11): personal files stay on the build machine and are never pushed; code and scripts are pushed as before. (GitHub's only way to a private repository would be Settings > Danger zone > Leave fork network, which is permanent and drops the pull requests; not pursued.)
@@ -84,3 +85,13 @@ The original plan (private repo, files committed under `extended/seed/`, a seedi
 - Device: `sshpass -p ark ssh ark@192.168.1.159`; `ark` has passwordless sudo. Only reachable when the card is in the device and it is on.
 - GitHub: the GitHub connector token reads but cannot create PRs; PRs are created with the token from Git Credential Manager (`git credential fill`), not printed. No `gh` CLI locally. Workflow runs/annotations: `api.github.com/repos/GazousGit/dArkOSen-R36S-Extended/actions/runs` and `.../check-runs/<job id>/annotations` (public today; need the token once private).
 - Workflow behaviour: push to `main` or `ext/**` touching `extended/` runs the check; branch runs publish drafts or skip; `main` promotes drafts and rebuilds when the `extended/` tree hash changed; `workflow_dispatch` has `tag`, `force`, `draft`, `level`.
+
+## 8. Dreamcast cores (flycast, `components/flycast_32_hack/`, started 2026-10-16)
+
+`components/flycast_32_hack/README.md` has the details; the essentials:
+
+- Goal: the faster "hacked" 32-bit flycast the user tested in 2025 (GTA2 runs better), improved, and Windows CE games (Resident Evil 2) playable. Its author, metallic77, deleted their Reddit messages; the whole history survives in `metallic77/flycast32_rumble` branch `dev`. The user's old binary (`flycast32_rumble_hack_libretro.so`, their ES entry "flycast32_rumble_hack") is their commit `51c45727` of 2025-06-19.
+- Forks (made 2026-10-16 through the Git Credential Manager token; the connector token gets 403 on forks too): `GazousGit/flycast32_rumble` (branches `gazous` = our fixes, `arkos-stock` = rebuild of dArkOSen's core) and `GazousGit/flycast` (branch `dArkOSen` = flyinghead upstream + R36S motor rumble, library name "Flycast32 Modern"). Local clones in `components/flycast_32_hack/` are git-ignored.
+- dArkOSen's retroarch32/retrorun32 Dreamcast default `flycast32_rumble` is legacy `libretro/flycast` `4c293f3` + ArkOS patches. Its 64-bit `flycast_libretro.so` is legacy code too; the only modern flycast in the image is the 64-bit standalone `/opt/flycastsa/flycast` v2.7. The legacy ARM32 dynarec has no MMU translation (WinCE hangs at the logo); modern flycast's ARM32 dynarec has it.
+- Builds in the WSL chroot `/root/flycast-build/trixie` (Debian trixie, armhf cross GCC 14 = the image's glibc/libstdc++): `build.sh` (legacy) and `build-modern.sh` (CMake, GLES3). `device-install.sh [host]` installs `flycast32_rumble_hack` and `flycast32_modern` beside `flycast32_rumble` in all 6 ES core lists (backup `es_systems.cfg.before-flycast32`).
+- Not tried on a device yet. The user offered SSH access to a console for tests.
