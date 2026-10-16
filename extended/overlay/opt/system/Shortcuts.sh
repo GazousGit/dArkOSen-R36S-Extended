@@ -8,8 +8,9 @@
 # - Reminder before a game: perfmax, the script dArkOSen
 #   runs before every launch, calls
 #   /usr/local/bin/launch-reminder, which prints the page
-#   of the emulator about to start for a few seconds.
-#   This tool turns it on or off and sets its duration.
+#   of the emulator about to start for up to 10 seconds;
+#   A goes on at once. This tool turns it on or off and
+#   sets the time.
 #
 # The pages are plain text files: first line = title, lines
 # starting with # are not shown. A file in <roms>/shortcuts/
@@ -56,9 +57,9 @@ USER_TEXTS="$ROOT$D_ROMS/shortcuts"
 
 Own() { chown --reference="$(dirname "$CONF")" "$@" 2>/dev/null || :; }
 Load_Conf() {
-    REMINDER=1; DELAY=2
+    REMINDER=1; DELAY=10
     [ -f "$CONF" ] && . "$CONF"
-    [[ "$DELAY" =~ ^[0-9]+$ ]] || DELAY=2
+    [[ "$DELAY" =~ ^[0-9]+$ ]] || DELAY=10
 }
 Save_Conf() {
     mkdir -p "$(dirname "$CONF")"
@@ -171,8 +172,8 @@ while true; do
     case "$CHOICE" in
         R) [ "$REMINDER" = 1 ] && REMINDER=0 || REMINDER=1; Save_Conf ;;
         D) d=$(dialog --clear --backtitle "$BACKTITLE" --title "Reminder duration" \
-               --menu "How long the reminder stays on screen\nbefore the game starts." 15 46 6 \
-               1 "1 s" 2 "2 s" 3 "3 s" 4 "4 s" 5 "5 s" 2>&1 > "$CURR_TTY") && { DELAY=$d; Save_Conf; } ;;
+               --menu "How long the reminder stays on screen\nbefore the game starts.\nA (or B, Start) goes on at once." 15 46 6 \
+               3 "3 s" 5 "5 s" 10 "10 s" 15 "15 s" 20 "20 s" 30 "30 s" 2>&1 > "$CURR_TTY") && { DELAY=$d; Save_Conf; } ;;
         E) n=$(Export); Msg "$n text file(s) copied to\n$D_ROMS/shortcuts\n\nEdit them on a PC: the first line is the title, lines\nstarting with # are not shown. A file there replaces\nthe built-in one of the same name." 13 58 ;;
         *) f=$(Page_File "${keys[$((CHOICE - 1))]}")
            dialog --clear --backtitle "$BACKTITLE" --title "$(Title "$f")" --msgbox "$(Body "$f")" 21 68 > "$CURR_TTY" ;;

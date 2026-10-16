@@ -13,6 +13,7 @@ TOOL="$REPO/extended/bootvideo/Boot Video Manager.sh"
 INJECT="$REPO/extended/build/inject.sh"
 BUILD="$REPO/extended/build/build-image.sh"
 FIXBOOT="$REPO/extended/build/fix-boot.sh"
+GROW="$REPO/extended/build/grow-root.sh"
 T=$(mktemp -d)
 trap 'umount "$T/root9" "$T/rootbtrfs" 2>/dev/null; rm -rf "$T"' EXIT
 PASS=0; FAILED=0
@@ -71,11 +72,14 @@ expect "bash -n Boot Video Manager.sh" bash -n "$TOOL"
 expect "bash -n inject.sh"             bash -n "$INJECT"
 expect "bash -n build-image.sh"        bash -n "$BUILD"
 expect "bash -n fix-boot.sh"          bash -n "$FIXBOOT"
+expect "bash -n grow-root.sh"         bash -n "$GROW"
 if command -v shellcheck >/dev/null; then
     expect "shellcheck Boot Video Manager.sh" shellcheck -S warning -e SC1090,SC1091,SC2016,SC2024 "$TOOL"
     expect "shellcheck inject.sh"             shellcheck -S warning "$INJECT"
     expect "shellcheck build-image.sh"        shellcheck -S warning -e SC2016 "$BUILD"
     expect "shellcheck fix-boot.sh"          shellcheck -S warning "$FIXBOOT"
+    expect "shellcheck grow-root.sh"         shellcheck -S warning "$GROW"
+    expect "shellcheck launch-reminder"      shellcheck -S warning -e SC1090 "$REPO/extended/overlay/usr/local/bin/launch-reminder"
     expect "shellcheck run-tests.sh"          shellcheck -S warning -e SC2016 "$0"
 else
     echo "  skip shellcheck (not installed)"
@@ -303,6 +307,76 @@ if command -v mkfs.btrfs >/dev/null && truncate -s 256M "$RB" && mkfs.btrfs -q "
 else
     echo "  skip compressed-root checks (no btrfs here)"
 fi
+echo "== themes and EmulationStation settings from the personal folder"
+RT="$T/roottheme"; make_root "$RT"; cp "$T/roms.tar.orig" "$RT/roms.tar"
+mkdir -p "$RT/tempthemes/es-theme-switch"; echo upstream > "$RT/tempthemes/es-theme-switch/theme.xml"
+PT="$T/romstheme"; mkdir -p "$PT/themes/es-theme-nes-box/_inc" "$PT/themes/ES-THEME-SWITCH" "$PT/bios"
+echo nes > "$PT/themes/es-theme-nes-box/theme.xml"; head -c 4096 /dev/urandom > "$PT/themes/es-theme-nes-box/_inc/bg.png"
+echo mine > "$PT/themes/ES-THEME-SWITCH/theme.xml"; echo bios > "$PT/bios/x.bin"
+printf '\xef\xbb\xbf<string name="GamelistViewStyle" value="video" />\r\n  <string name="ThemeSet" value="es-theme-nes-box" />\r\nnot a setting\r\n' > "$PT/es_settings.cfg"
+OUTT=$(bash "$INJECT" "$RT" "" 10152026 "$PT" 2>&1); RC=$?
+ESR="$RT/home/ark/.emulationstation/es_settings.cfg"
+expect "inject with themes exits 0"           test "$RC" = "0"
+expect "a new theme goes to /tempthemes"      cmp -s "$PT/themes/es-theme-nes-box/_inc/bg.png" "$RT/tempthemes/es-theme-nes-box/_inc/bg.png"
+expect "a theme dArkOSen ships is kept (any case)" bash -c 'grep -qx upstream "$1/es-theme-switch/theme.xml" && test ! -e "$1/ES-THEME-SWITCH"' _ "$RT/tempthemes"
+expect "and the log says so"                  grep -q 'theme ES-THEME-SWITCH is already in /tempthemes, not replaced' <<<"$OUTT"
+expect "the log lists the added theme"        grep -qE '/tempthemes \+1 theme\(s\), 0 MB, [0-9]+ MB used on the root filesystem: es-theme-nes-box$' <<<"$OUTT"
+expect "themes stay out of roms.tar"          bash -c '! tar -tf "$1" | grep -q "^roms/themes/"' _ "$RT/roms.tar"
+expect "other files still go to roms.tar"     bash -c 'tar -tf "$1" | grep -qx roms/bios/x.bin' _ "$RT/roms.tar"
+expect "es_settings.cfg stays out of roms.tar" bash -c '! tar -tf "$1" | grep -q es_settings' _ "$RT/roms.tar"
+expect "build stamp: 1 theme, 2 settings"     bash -c 'grep -qx DARKOSEN_EXTENDED_THEMES=1 "$1" && grep -qx DARKOSEN_EXTENDED_ES_SETTINGS=2 "$1"' _ "$RT/etc/dArkOSen-Extended.release"
+expect "es_settings: a new setting is added"  grep -qx '<string name="GamelistViewStyle" value="video" />' "$ESR"
+expect "an existing one is replaced, not doubled" bash -c 'test "$(grep -c "name=\"ThemeSet\"" "$1")" = 1 && grep -qx "<string name=\"ThemeSet\" value=\"es-theme-nes-box\" />" "$1"' _ "$ESR"
+expect "the other lines and the N64 default stay" bash -c 'grep -q "name=\"InvertButtons\" value=\"true\"" "$1" && grep -q "name=\"n64.emulator\"" "$1"' _ "$ESR"
+expect "anything else is ignored, no CR or BOM" bash -c '! grep -q "not a setting" "$1" && ! grep -q "$(printf "\r")" "$1" && ! grep -q "$(printf "\357\273\277")" "$1"' _ "$ESR"
+expect "every line still parses (flat layout)" python3 -I -c 'import sys,xml.etree.ElementTree as E; E.fromstring("<r>" + open(sys.argv[1]).read().split("?>", 1)[-1] + "</r>")' "$ESR"
+RT2="$T/roottheme2"; make_root "$RT2"; cp "$T/roms.tar.orig" "$RT2/roms.tar"     # before 10152026: no /tempthemes
+bash "$INJECT" "$RT2" "" 09302026 "$PT" >/dev/null 2>&1
+expect "no /tempthemes: themes go into roms.tar" bash -c 'tar -tf "$1" | grep -qx roms/themes/es-theme-nes-box/theme.xml' _ "$RT2/roms.tar"
+
+echo "== grow-root.sh: more room on the root partition, EASYROMS moved along"
+GI="$T/grow.img"; S3=542720
+if command -v sfdisk >/dev/null && command -v jq >/dev/null && truncate -s 300M "$GI" \
+   && printf 'label: dos\nlabel-id: 0x6ebc7c15\nstart=2048, size=16384, type=c, bootable\nstart=18432, size=524288, type=83\nstart=%s, size=16384, type=7\n' "$S3" | sfdisk -q "$GI" 2>/dev/null; then
+    BTRFS_OK=0; GL=""; GM="$T/growmnt"; mkdir -p "$GM"
+    if command -v mkfs.btrfs >/dev/null && GL=$(losetup --find --show --partscan "$GI" 2>/dev/null); then
+        udevadm settle 2>/dev/null || sleep 1
+        if mkfs.btrfs -q "${GL}p2" >/dev/null 2>&1 && mount "${GL}p2" "$GM" 2>/dev/null; then
+            echo marker > "$GM/marker"; umount "$GM"; BTRFS_OK=1
+        fi
+        losetup -d "$GL"
+    fi
+    head -c 8M /dev/urandom | dd of="$GI" bs=512 seek="$S3" conv=notrunc status=none       # stands for EASYROMS
+    dd if="$GI" of="$T/p3.before" bs=512 skip="$S3" count=16384 status=none
+    sfdisk -d "$GI" | grep -E '^label-id|img1 ' > "$T/fixed.before"
+    OUTG=$(bash "$GROW" "$GI" 2 64 2>&1); RC=$?
+    expect "grow-root.sh exits 0"                 test "$RC" = "0"
+    expect "says what it did"                     grep -q 'partition 2 +64 MiB (524288 -> 655360 sectors), 1 partition(s) after it moved' <<<"$OUTG"
+    expect "image 64 MiB bigger"                  test "$(stat -c %s "$GI")" = "$(( 364 * 1048576 ))"
+    expect "partition 2 grown in place"           bash -c 'sfdisk -d "$1" | grep -q "img2 : start= *18432, size= *655360, type=83"' _ "$GI"
+    expect "partition 3 moved by the same amount" bash -c 'sfdisk -d "$1" | grep -q "img3 : start= *$2, size= *16384, type=7"' _ "$GI" "$((S3 + 131072))"
+    expect "its data moved with it"               bash -c 'cmp -s "$1" <(dd if="$2" bs=512 skip="$3" count=16384 status=none)' _ "$T/p3.before" "$GI" "$((S3 + 131072))"
+    expect "partition 1, boot flag, disk id unchanged" bash -c 'cmp -s "$1" <(sfdisk -d "$2" | grep -E "^label-id|img1 ")' _ "$T/fixed.before" "$GI"
+    expect "a partition that does not exist fails" bash -c '! bash "$1" "$2" 4 64 2>/dev/null' _ "$GROW" "$GI"
+    expect "bad arguments fail"                   bash -c '! bash "$1" "$2" 2 0 2>/dev/null && ! bash "$1" "$2" x 64 2>/dev/null' _ "$GROW" "$GI"
+    if [ "$BTRFS_OK" = 1 ] && GL=$(losetup --find --show --partscan "$GI" 2>/dev/null); then
+        udevadm settle 2>/dev/null || sleep 1
+        mount "${GL}p2" "$GM"; b0=$(df --output=size -k "$GM" | tail -1 | tr -d ' ')
+        btrfs filesystem resize max "$GM" >/dev/null 2>&1; b1=$(df --output=size -k "$GM" | tail -1 | tr -d ' ')
+        expect "btrfs grows into the new space (resize max)" test "$((b1 - b0))" = "65536"
+        expect "and keeps its files"              grep -qx marker "$GM/marker"
+        umount "$GM"
+        expect "btrfs check clean afterwards"     btrfs check --readonly "${GL}p2"
+        losetup -d "$GL"
+    else
+        echo "  skip btrfs part of grow-root (no btrfs or loop device here)"
+    fi
+    GG="$T/gpt.img"; truncate -s 64M "$GG"; printf 'label: gpt\nstart=2048, size=16384\nstart=18432, size=16384\n' | sfdisk -q "$GG" 2>/dev/null
+    expect "GPT disks are refused"                bash -c '! bash "$1" "$2" 1 8 2>/dev/null' _ "$GROW" "$GG"
+else
+    echo "  skip grow-root checks (no sfdisk or jq)"
+fi
+
 RG="$REPO/extended/roms/.gitignore"
 expect "extended/roms ignores every file"     grep -qx '\*' "$RG"
 expect "only .gitignore and README.md are kept in git" test "$(grep -c '^!' "$RG")" = "2"
@@ -485,8 +559,8 @@ expect "exactly one hook line in perfmax"     test "$(grep -c '# shortcuts-hook'
 expect "the hook is the last line"            bash -c 'tail -1 "$1" | grep -q "launch-reminder  # shortcuts-hook$"' _ "$PM6"
 expect "perfmax still parses, mode kept"      bash -c 'bash -n "$1" && test "$(stat -c %a "$1")" = 755' _ "$PM6"
 expect "upstream's lines untouched"           bash -c 'diff <(grep -v "# shortcuts-hook" "$1") <(cat "$2"; echo) >/dev/null' _ "$PM6" "$REPO/usr/local/bin/perfmax"
-expect "settings written, reminder on, 2 s"   test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=1 DELAY=2 "
-expect "--status reports the hook"            bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --status | grep -q "reminder=1 delay=2 hook=present"' _ "$SC" "$R6"
+expect "settings written, reminder on, 10 s"  test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=1 DELAY=10 "
+expect "--status reports the hook"            bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --status | grep -q "reminder=1 delay=10 hook=present"' _ "$SC" "$R6"
 cp "$REPO/usr/local/bin/perfmax" "$PM6"                                # an OTA update replaced perfmax
 printf 'REMINDER=0\nDELAY=4\n' > "$R6/home/ark/.config/shortcuts.conf" # and the user had turned the reminder off
 expect "--repair (self-repair service) exits 0" env BOOTVIDEO_ROOT="$R6" bash "$TOOL" --repair
@@ -524,6 +598,20 @@ printf '\xef\xbb\xbfMY TITLE\r\n# note\r\nSELECT + B ... quit\r\n' > "$SD/user/r
 expect "a page edited on Windows prints cleanly" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "MY TITLE" "$5" && grep -q "SELECT + B ... quit" "$5" && ! grep -q "note" "$5" && ! grep -q "$(printf "\r")" "$5" && ! grep -q "$(printf "\357\273\277")" "$5"' _ "$LR" "$RA_CMD" "$SD/user $STX" "$SD/on.conf" "$SD/tty"
 : > "$SD/tty"
 expect "nothing printed when the reminder is off" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && test ! -s "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/off.conf" "$SD/tty"
+: > "$SD/tty"
+expect "no prompt when the time is 0"         bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q RETROARCH "$5" && ! grep -q "Press A" "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/on.conf" "$SD/tty"
+expect "10 s by default"                      grep -qx 'REMINDER=1; DELAY=10' "$LR"
+printf 'REMINDER=1\nDELAY=1\n' > "$SD/wait.conf"; mkdir -p "$SD/long"; : > "$SD/tty"
+{ echo "LONG PAGE"; for i in $(seq 1 20); do echo "line $i"; done; } > "$SD/long/retroarch.txt"
+t0=$(date +%s%N)
+expect "the prompt is printed when it waits"  bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" SHORTCUTS_PYTHON=/nonexistent/python3 bash "$1" < /dev/null && grep -q "Press A to continue" "$5"' _ "$LR" "$RA_CMD" "$SD/long" "$SD/wait.conf" "$SD/tty"
+expect "without python it waits the whole time" test $(( ($(date +%s%N) - t0) / 1000000 )) -ge 1000
+expect "the title and 11 lines, then the prompt" bash -c 'grep -q "line 11" "$1" && ! grep -q "line 12" "$1"' _ "$SD/tty"
+if command -v python3 >/dev/null; then       # no game pad here: the button wait must fall back to the full time
+    t0=$(date +%s%N)
+    bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null' _ "$LR" "$RA_CMD" "$SD/long" "$SD/wait.conf" "$SD/tty"
+    expect "with python but no pad it waits the whole time" test $(( ($(date +%s%N) - t0) / 1000000 )) -ge 1000
+fi
 
 echo "== which videos play: all / none / list / playlist"
 RP="$T/rootpl"; make_root "$RP"; bash "$TOOL" --install-root "$RP" >/dev/null

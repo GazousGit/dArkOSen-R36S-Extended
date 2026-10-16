@@ -31,7 +31,9 @@
 #   --out DIR           output dir (default WORKDIR/out)
 #   --videos DIR        videos to ship (seeded into /roms/bootvideos)
 #   --roms DIR          files for the roms partition, laid out like
-#                       /roms (local builds: extended/roms/README.md)
+#                       /roms (local builds: extended/roms/README.md);
+#                       the root partition is enlarged when they do
+#                       not fit (grow-root.sh)
 #   --level N           7z compression level 1-9 (default 5)
 #   --split SIZE        7z volume size (default 1900m)
 #   --name NAME         output base name
@@ -58,7 +60,7 @@ while [ $# -gt 0 ]; do
         --name)     NAME=$2; shift 2 ;;
         --keep-img) KEEP_IMG=1; shift ;;
         --no-pack)  NO_PACK=1; shift ;;
-        -h|--help)  sed -n '2,41p' "$0"; exit 0 ;;
+        -h|--help)  sed -n '2,43p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -222,6 +224,31 @@ log "filesystem check (before): exit $FSCK_BEFORE ($(tail -1 "$WORK/fsck-before.
 if [ "$ROOTTYPE" = btrfs ]; then mount -o compress-force=zlib:1 "$ROOTP" "$MNT"; else mount "$ROOTP" "$MNT"; fi
 ROOT_FREE=$(df --output=avail -k "$MNT" | tail -1 | tr -d ' ')
 log "root filesystem mounted, $(human $((ROOT_FREE * 1024))) free"
+
+# --roms files that would not fit: make the root partition bigger first, by their raw size plus
+# the reserve inject.sh keeps (compression only adds margin). dArkOSen's first boot grows it to
+# about 11 GB anyway (expandtoexfat.sh); see grow-root.sh. Release builds have no --roms files.
+GROWN=0
+if [ -n "$ROMS" ] && [ "$ROOTTYPE" = btrfs ]; then
+    mapfile -d '' rf < <(cd "$ROMS" && find . -mindepth 2 -type f ! -name .gitignore -print0)
+    if [ ${#rf[@]} -gt 0 ]; then
+        WANT=$(( $(cd "$ROMS" && printf '%s\0' "${rf[@]}" | du -ck --apparent-size --files0-from=- | tail -1 | cut -f1) + 32768 + 16384 ))
+        if [ "$ROOT_FREE" -lt "$WANT" ]; then
+            GROWN=$(( (WANT - ROOT_FREE + 65535) / 65536 * 64 ))           # MiB, in steps of 64
+            log "--roms files need up to $((WANT / 1024)) MiB with the reserve, $((ROOT_FREE / 1024)) MiB free: root partition +$GROWN MiB"
+            RNUM=${ROOTP##*p}; BNUM=${BOOTP##*p}
+            umount "$MNT"; losetup -d "$LOOP"; LOOP=""
+            bash "$HERE/grow-root.sh" "$IMG" "$RNUM" "$GROWN"
+            LOOP=$(losetup --find --show --partscan "$IMG")
+            udevadm settle 2>/dev/null || sleep 2
+            ROOTP="${LOOP}p$RNUM"; [ -n "$BOOTP" ] && BOOTP="${LOOP}p$BNUM"
+            mount -o compress-force=zlib:1 "$ROOTP" "$MNT"
+            btrfs filesystem resize max "$MNT" > /dev/null
+            ROOT_FREE=$(df --output=avail -k "$MNT" | tail -1 | tr -d ' ')
+            log "root filesystem grown, $(human $((ROOT_FREE * 1024))) free; image $(human "$(stat -c %s "$IMG")")"
+        fi
+    fi
+fi
 [ "$ROOT_FREE" -gt 8192 ] || die "root filesystem has less than 8 MB free"
 
 bash "$INJECT" "$MNT" "$VIDEOS" "$TAG" "$ROMS"
