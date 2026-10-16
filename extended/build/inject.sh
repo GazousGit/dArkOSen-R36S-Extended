@@ -90,6 +90,12 @@ if [ -n "$ROMSDIR" ] && [ -d "$ROMSDIR" ]; then
         if [ ${#add[@]} -gt 0 ]; then
             need=$(cd "$ROMSDIR" && printf '%s\0' "${add[@]}" | du -ck --apparent-size --files0-from=- | tail -1 | cut -f1)
             need=$((need + ${#add[@]}))                        # tar header and padding of each file
+            raw=$need
+            # A root mounted with compression (build-image.sh uses dArkOSen's own zlib) stores the
+            # files compressed: estimate with gzip -1, plus 10 % for btrfs' per-extent compression
+            case ",$(findmnt -no OPTIONS --target "$ROOT" 2>/dev/null)," in
+                *,compress*) need=$(( $(cd "$ROMSDIR" && printf '%s\0' "${add[@]}" | tar -cf - --null -T - | gzip -1 | wc -c) / 1024 * 11 / 10 )) ;;
+            esac
             free=$(df --output=avail -k "$ROOT" | tail -1 | tr -d ' ')
             if [ $((free - need)) -lt "$ROMS_RESERVE_KB" ]; then
                 echo "inject: the files for the roms partition need $((need / 1024)) MB, the root filesystem has $((free / 1024)) MB free and $((ROMS_RESERVE_KB / 1024)) MB must remain" >&2
@@ -97,13 +103,19 @@ if [ -n "$ROMSDIR" ] && [ -d "$ROMSDIR" ]; then
             fi
             (cd "$ROMSDIR" && printf '%s\0' "${add[@]}" \
                 | tar -rf "$ROMSTAR" --null -T - --transform 's|^|roms/|' --owner=0 --group=0 --mode='u=rwX,go=rX')
+            sync -f "$ROMSTAR"
+            left=$(df --output=avail -k "$ROOT" | tail -1 | tr -d ' ')
+            if [ "$left" -lt "$ROMS_RESERVE_KB" ]; then                 # the estimate was too optimistic
+                echo "inject: only $((left / 1024)) MB left on the root filesystem after adding the files ($((ROMS_RESERVE_KB / 1024)) MB must remain)" >&2
+                exit 1
+            fi
             nafter=$(tar -tf "$ROMSTAR" | wc -l)
             if [ "$nafter" -ne $((nbefore + ${#add[@]})) ]; then
                 echo "inject: roms.tar lists $nafter entries after the append, expected $((nbefore + ${#add[@]}))" >&2
                 exit 1
             fi
             NROMS=${#add[@]}
-            echo "inject: roms.tar +$NROMS file(s), $((need / 1024)) MB:$(printf '%s\n' "${add[@]}" | cut -d/ -f1 | sort | uniq -c | awk '{printf " %s (%s)", $2, $1}')"
+            echo "inject: roms.tar +$NROMS file(s), $((raw / 1024)) MB, $(((free - left) / 1024)) MB used on the root filesystem:$(printf '%s\n' "${add[@]}" | cut -d/ -f1 | sort | uniq -c | awk '{printf " %s (%s)", $2, $1}')"
         fi
     fi
 fi
