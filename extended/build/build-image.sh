@@ -217,7 +217,9 @@ fscheck() {   # $1 device, $2 fs type, $3 log file -> prints the checker's exit 
 FSCK_BEFORE=$(fscheck "$ROOTP" "$ROOTTYPE" "$WORK/fsck-before.log")
 log "filesystem check (before): exit $FSCK_BEFORE ($(tail -1 "$WORK/fsck-before.log" | cut -c1-80))"
 
-mount "$ROOTP" "$MNT"
+# btrfs: write with the compression dArkOSen's own fstab uses (compress=zlib:1), forced so that
+# appended data (roms.tar) is compressed as well; its kernel reads zlib extents
+if [ "$ROOTTYPE" = btrfs ]; then mount -o compress-force=zlib:1 "$ROOTP" "$MNT"; else mount "$ROOTP" "$MNT"; fi
 ROOT_FREE=$(df --output=avail -k "$MNT" | tail -1 | tr -d ' ')
 log "root filesystem mounted, $(human $((ROOT_FREE * 1024))) free"
 [ "$ROOT_FREE" -gt 8192 ] || die "root filesystem has less than 8 MB free"

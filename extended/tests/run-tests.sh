@@ -14,7 +14,7 @@ INJECT="$REPO/extended/build/inject.sh"
 BUILD="$REPO/extended/build/build-image.sh"
 FIXBOOT="$REPO/extended/build/fix-boot.sh"
 T=$(mktemp -d)
-trap 'umount "$T/root9" 2>/dev/null; rm -rf "$T"' EXIT
+trap 'umount "$T/root9" "$T/rootbtrfs" 2>/dev/null; rm -rf "$T"' EXIT
 PASS=0; FAILED=0
 
 ok()   { PASS=$((PASS+1)); echo "  ok   $*"; }
@@ -282,6 +282,20 @@ if mount -t tmpfs -o size=48m tmpfs "$R9" 2>/dev/null; then           # a root f
     umount "$R9"
 else
     echo "  skip free-space checks (cannot mount a tmpfs)"
+fi
+RB="$T/btrfs.img"; RBM="$T/rootbtrfs"; mkdir -p "$RBM"
+if command -v mkfs.btrfs >/dev/null && truncate -s 256M "$RB" && mkfs.btrfs -q "$RB" >/dev/null 2>&1 \
+   && mount -o loop,compress-force=zlib:1 "$RB" "$RBM" 2>/dev/null; then     # like build-image.sh mounts dArkOSen's root
+    make_root "$RBM"; cp "$T/roms.tar.orig" "$RBM/roms.tar"
+    mkdir -p "$T/romsz/bios"; head -c 230000000 /dev/zero > "$T/romsz/bios/big-but-compressible.bin"
+    FREEZ=$(df --output=avail -k "$RBM" | tail -1 | tr -d ' ')
+    OUTZ=$(bash "$INJECT" "$RBM" "" 10152026 "$T/romsz" 2>&1); RC=$?
+    expect "compressed root: files larger than the free space are accepted" test "$RC" = "0" -a "$FREEZ" -lt 235000
+    expect "the log gives size and space used"    grep -qE 'roms.tar \+1 file\(s\), 219 MB, [0-9]+ MB used on the root filesystem' <<<"$OUTZ"
+    expect "the archive reads back"               bash -c 'test "$(tar -tf "$1" | wc -l)" = "$2"' _ "$RBM/roms.tar" "$((NORIG + 1))"
+    umount "$RBM"
+else
+    echo "  skip compressed-root checks (no btrfs here)"
 fi
 RG="$REPO/extended/roms/.gitignore"
 expect "extended/roms ignores every file"     grep -qx '\*' "$RG"
