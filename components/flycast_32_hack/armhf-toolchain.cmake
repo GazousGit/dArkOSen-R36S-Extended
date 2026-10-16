@@ -6,6 +6,8 @@ set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
 set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++)
 set(CMAKE_LIBRARY_ARCHITECTURE arm-linux-gnueabihf)
 
+# Only used when CMAKE_<LANG>_FLAGS is not given on the command line (build-modern.sh
+# gives it, with these flags included): -marm matters, the dynarecs need ARM-mode code.
 set(CPU_FLAGS "-marm -mcpu=cortex-a35 -mfpu=neon-fp-armv8 -mfloat-abi=hard")
 set(CMAKE_C_FLAGS_INIT "${CPU_FLAGS}")
 set(CMAKE_CXX_FLAGS_INIT "${CPU_FLAGS}")

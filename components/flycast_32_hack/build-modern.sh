@@ -23,6 +23,10 @@ NAME=$1
 shift
 
 [ -x "$CHROOT/usr/bin/cmake" ] || { echo "missing cmake in $CHROOT" >&2; exit 1; }
+# ARM (A32) code is required: the dynarecs branch to C++ functions with BL, which cannot
+# reach Thumb code, and Debian's armhf compiler defaults to Thumb-2 without NEON. A
+# CMAKE_<LANG>_FLAGS given here replaces the toolchain file's _INIT flags, so all go here.
+FLAGS="-marm -mcpu=cortex-a35 -mfpu=neon-fp-armv8 -mfloat-abi=hard -DLOW_END"
 VERSION=$(git -C "$SRC" describe --tags --always --dirty)
 COMMIT=$(git -C "$SRC" rev-parse HEAD)
 
@@ -41,7 +45,7 @@ if ! chroot "$CHROOT" /bin/bash -c "git config --global --add safe.directory '*'
         -DLIBRETRO=ON -DUSE_GLES=ON -DUSE_OPENGL=ON -DUSE_VULKAN=OFF \
         -DUSE_OPENMP=ON -DUSE_HOST_LIBZIP=OFF -DUSE_LUA=OFF -DUSE_BREAKPAD=OFF \
         -DCMAKE_DISABLE_FIND_PACKAGE_ZLIB=ON -DCMAKE_DISABLE_FIND_PACKAGE_MiniUPnPc=ON \
-        -DCMAKE_C_FLAGS=-DLOW_END -DCMAKE_CXX_FLAGS=-DLOW_END \
+        -DCMAKE_C_FLAGS='$FLAGS' -DCMAKE_CXX_FLAGS='$FLAGS' \
         $* && ninja -C /build/$NAME" > "$OUT/build.log" 2>&1; then
     tail -30 "$OUT/build.log" >&2
     echo "build failed, full log: $OUT/build.log" >&2
@@ -53,7 +57,7 @@ cp "$CHROOT/build/$NAME/stripped.so" "$OUT/flycast32_modern_libretro.so"
 {
     echo "version: $VERSION"
     echo "commit:  $COMMIT"
-    echo "cmake:   LIBRETRO GLES3 OpenMP LOW_END $*"
+    echo "cmake:   LIBRETRO GLES3 OpenMP, flags: $FLAGS $*"
     echo "gcc:     $(chroot "$CHROOT" arm-linux-gnueabihf-g++ --version | head -1)"
     echo "built:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$OUT/commit.txt"

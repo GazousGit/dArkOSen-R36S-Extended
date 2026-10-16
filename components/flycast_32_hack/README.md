@@ -8,7 +8,16 @@ Two 32-bit flycast libretro cores for dArkOSen on the R36S, to install beside Ar
 | `flycast32_rumble_hack` | metallic77's low-end fork of the legacy core + our fixes | Faster on many games (GTA2...), SH4 underclock option |
 | `flycast32_modern` | flyinghead's current flycast (v2.7) built for armhf | Its ARM32 dynarec emulates the MMU: Windows CE games (Resident Evil 2...) can boot |
 
-**Status: built, not yet tried on a device.** Nothing here is part of the image build yet.
+**Status (end of 2026-10-16): both cores dropped.** They were installed on one console with
+`device-install.sh` (`out/gazous-v2`, `out/modern-dArkOSen-5`) and are removed again with
+`device-remove.sh`. `flycast32_rumble_hack` as rebuilt here gives a black screen on GTA2 under both
+retrorun32 and retroarch32 (the user's 2025 binary from metallic77 had worked; not investigated).
+`flycast32_modern` is **not usable for games**: with the two fixes below it boots the Dreamcast
+BIOS and shows Resident Evil 2's Windows CE logo, then hits heap corruption; Code Veronica hangs at
+once. It now keeps its options apart from the legacy cores (`flycast_` prefix). The Windows CE goal
+was dropped on 2026-10-16: RE2 is out of reach on the R36S even with the 64-bit modern flycast. Even the 64-bit modern standalone (v2.7) runs RE2 at
+10-30 fps and freezes after its brightness prompt, so WinCE games look out of reach on the R36S for
+now. Hand-off notes: `extended/CONTEXT.md` section 8. Nothing here is part of the image build yet.
 
 ## Sources
 
@@ -25,7 +34,7 @@ git clone --recurse-submodules -b dArkOSen https://github.com/GazousGit/flycast.
 | | `arkos-stock` | `4c293f3` + the 3 ArkOS patches (makefile, per-pixel, rumble): rebuild of the core dArkOSen ships |
 | | `gazous` | `dev` + our fixes, output `flycast32_rumble_hack_libretro.so` |
 | [GazousGit/flycast](https://github.com/GazousGit/flycast) (of `flyinghead/flycast`) | `master` | upstream |
-| | `dArkOSen` | `master` + R36S motor rumble, library name "Flycast32 Modern" |
+| | `dArkOSen` | `master` + R36S motor rumble, library name "Flycast32 Modern", addrspace shift fix (`e0e960683`) |
 
 ### Where metallic77's work survives
 
@@ -64,7 +73,11 @@ metallic77 (DariusG) shared their core on Reddit in 2025 and later deleted their
 1. **Rumble back**, with the ArkOS patch's sysfs files and values, but written by a helper thread
    instead of `system("echo ... && sleep 0.4 ...")` / `sudo tee` on the emulation thread for every
    vibration command. The motor runs while the game asks for a strength above 0, at least 400 ms
-   per pulse, and is switched off when the game unloads.
+   per pulse, and is switched off when the game unloads. **On the R36S with dArkOSen this path is
+   inactive**: the pad driver ("GO-Super Gamepad") offers force feedback (EV_FF, FF_RUMBLE) and owns
+   the PWM, so `/sys/class/pwm/pwmchip*/pwm0` never exists there. Rumble then goes through the
+   frontend (RetroArch's udev force feedback), as with the stock core; dArkOSen's retroarch32
+   options ship `reicast_enable_purupuru = "disabled"`, so the vibration pack must be turned on.
 2. **`reicast_sh4clock` fallback**: when the frontend returns no value, the multiplier stayed 0
    (blocks cost no cycles). It now falls back to the option default (x1.2). A plain number is read
    as MHz, so `retrorun.cfg` can say `reicast_sh4clock = 125`, the same format as modern flycast.
@@ -81,8 +94,13 @@ modern 32-bit core can boot WinCE games; how fast is for the device to tell. It 
 `reicast_sh4clock` (values in MHz) and `reicast_auto_skip_frame`.
 
 The `dArkOSen` branch adds the same motor rumble as above and the library name "Flycast32 Modern",
-so RetroArch keeps its per-game options apart from the legacy "Flycast" core. The option prefix stays
-`reicast_`, so dArkOSen's existing `retrorun.cfg` and `retroarch-core-options.cfg` keys apply.
+so RetroArch keeps its per-game options apart from the legacy "Flycast" core. Since `a873b38cf` its
+options use the prefix **`flycast_`** (as ROCKNIX does) instead of `reicast_`: the legacy cores and
+this one share `retroarch-core-options.cfg`, and RetroArch rewrites that file at every unload with
+the values the running core knows, so with a shared prefix the modern core replaced values of the
+legacy cores (cable type "VGA (RGB)" became "TV (Composite)"). dArkOSen's `reicast_*` keys therefore
+do not apply to it; its own `flycast_*` keys appear in the file after its first run. VMU saves stay
+shared (`<saves>/reicast/`).
 
 Checked in the sources and the 10152026 image, for both cores:
 - BIOS: `<system dir>/dc/`; retroarch32 has `system_directory = /roms/bios`, retrorun32 gets
@@ -92,7 +110,26 @@ Checked in the sources and the 10152026 image, for both cores:
 - Quit: the frontend's, not the core's: retroarch32 Select (hotkey, button 12) + Start (exit,
   button 13); retrorun32 Select + Start.
 
-Not checked yet: whether retrorun32 sets up the GLES3 context modern flycast asks for.
+**The core must be compiled in ARM (A32) mode.** The SH4 and ARM7 dynarecs call C++ functions
+with a direct `BL` from A32 code, which cannot reach Thumb functions (odd addresses), and Debian's
+armhf compiler defaults to Thumb-2, ARMv7, VFPv3-D16, no NEON. Built that way, the core aborted in
+`retro_init` (`aica::arm::init` -> `arm7backend_flush` -> `vixl::aarch32::Assembler::bl` ->
+`UnimplementedDelegate`), which sent ES straight back. `build-modern.sh` passes
+`-marm -mcpu=cortex-a35 -mfpu=neon-fp-armv8 -mfloat-abi=hard`; `readelf -A` on the result shows
+`Tag_CPU_arch: v8` and `NEON for ARMv8`.
+
+**Upstream undefined behaviour in `core/hw/mem/addrspace.cpp`** (fixed on the `dArkOSen` branch,
+`e0e960683`): `readConst`/`writeConst`/`readt`/`writet` shifted the address by the whole tagged page
+entry (`addr <<= iirf`) instead of its low 5 bits. Inside the `ptr != nullptr` branch that entry is
+known to be >= 32, and GCC 14 on armhf folds the shifts to 0: every access through a memory page
+read its first word, the BIOS never ran, and the screen stayed black (the SH4 PC slid through
+memory with both the dynarec and the interpreter). Shifting by `iirf & HANDLER_MAX` fixes it.
+
+Still open with both fixes: Resident Evil 2 reaches the "SEGA / Powered by Windows CE" screen,
+then glibc reports `double free or corruption (!prev)`; Code Veronica hangs at once (RetroArch
+must be SIGKILLed); earlier builds also hit a SIGSEGV in a system library when RetroArch unloads
+the core. `tools/abort-trace.c` and `extended/CONTEXT.md` 8.5 describe how to test and debug on
+the console.
 
 ## Build
 
@@ -111,9 +148,10 @@ chroot /root/flycast-build/trixie bash -c 'dpkg --add-architecture armhf && apt-
   ArkOS's flags (`platform=classic_armv8_a35 FORCE_GLES=1`, `ngen_arm.S` through gcc). GCC 14
   needs `-fpermissive` for the bundled libzip's implicit declarations.
 - `./build-modern.sh <name>`: modern core from the current checkout of `flycast/`, with CMake and
-  `armhf-toolchain.cmake` (GLES3, OpenMP, no Vulkan, bundled zlib/libzip, no Lua). `LOW_END`
-  picks handheld defaults: DSP off, per-strip sorting, auto skip frame "some", GD-ROM fast loading.
-  The core needs only libc, libstdc++ and libgomp.
+  `armhf-toolchain.cmake` (GLES3, OpenMP, no Vulkan, bundled zlib/libzip, no Lua), in ARM mode for
+  the Cortex-A35 with NEON (see above). `LOW_END` picks handheld defaults: DSP off, per-strip
+  sorting, auto skip frame "some", GD-ROM fast loading. The core needs only libc, libstdc++ and
+  libgomp.
 
 Output: `out/<name>/` with the stripped core, `build.log` and `commit.txt`.
 
@@ -131,10 +169,12 @@ SH4 clock: RetroArch Quick Menu > Options > "SH4 CPU under/overclock"; retrorun:
 
 ## Not done yet
 
-- Device tests: speed against the stock core, rumble, WinCE games on `flycast32_modern`.
+- Device test of `flycast32_rumble_hack` against the stock core (GTA2, heavy games, SH4 clock).
 - Windows CE on the legacy core: its ARM32 dynarec has no MMU address translation (only the store
-  queue checks the MMU), so games that turn the MMU on hang at the WinCE logo. Not worth porting,
-  `flycast32_modern` has it.
+  queue checks the MMU), so games that turn the MMU on hang at the WinCE logo. Not worth porting:
+  modern flycast has MMU support, and even it is too slow on this hardware (see Status).
+- `flycast32_modern`: the RE2 heap corruption and the Code Veronica hang, or drop it.
+- Offer the addrspace fix upstream (flyinghead/flycast).
 - Profile-guided build of the legacy core (`PGO_MAKE=1` / `PGO_USE=1` exist in its Makefile):
   needs profiling runs on the device.
 - Shipping the cores in built images (built in the workflow from the forks).
