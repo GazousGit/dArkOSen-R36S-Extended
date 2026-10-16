@@ -12,7 +12,8 @@ Two 32-bit flycast libretro cores for dArkOSen on the R36S, to install beside Ar
 (`out/gazous-v2`, `out/modern-dArkOSen-5`). `flycast32_rumble_hack` is not yet judged in play.
 `flycast32_modern` is **not usable for games**: with the two fixes below it boots the Dreamcast
 BIOS and shows Resident Evil 2's Windows CE logo, then hits heap corruption; Code Veronica hangs at
-once. It now keeps its options apart from the legacy cores (`flycast_` prefix). Even the 64-bit modern standalone (v2.7) runs RE2 at
+once. It now keeps its options apart from the legacy cores (`flycast_` prefix). The Windows CE goal
+was dropped on 2026-10-16: RE2 is out of reach on the R36S even with the 64-bit modern flycast. Even the 64-bit modern standalone (v2.7) runs RE2 at
 10-30 fps and freezes after its brightness prompt, so WinCE games look out of reach on the R36S for
 now. Hand-off notes: `extended/CONTEXT.md` section 8. Nothing here is part of the image build yet.
 

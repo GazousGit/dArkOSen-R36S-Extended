@@ -94,6 +94,7 @@ Hand-off for the next conversation. `components/flycast_32_hack/README.md` has t
 ### 8.1 Goal and what the user decided
 
 - Two aims: (1) the faster "hacked" 32-bit flycast the user tested in 2025 (GTA2 runs better), improved; (2) Windows CE games playable, above all Resident Evil 2 (only RE3 gets past the WinCE logo on the legacy cores).
+- **Decision 2026-10-16 (evening), user: aim (2) is dropped.** Resident Evil 2 / Windows CE will not work on the R36S (10-30 fps even on the 64-bit standalone). Do not spend more time on WinCE. Aim (1) stays.
 - New cores go **beside** ArkOS's `flycast32_rumble`, never over it (the user had an ES entry "flycast32_rumble_hack" for the 2025 binary). Forks of the sources live on GazousGit; local clones are git-ignored, our scripts and README are committed. Still open: the user asked whether to git-ignore `components/`; I recommended keeping the scripts tracked (or moving them to the fork) and got no answer yet.
 
 ### 8.2 Sources, forks, local layout
@@ -129,5 +130,5 @@ Hand-off for the next conversation. `components/flycast_32_hack/README.md` has t
 ### 8.6 Next steps (to decide with the user)
 
 1. Legacy hack: have the user compare `flycast32_rumble_hack` with the stock core (GTA2, a few heavy games, SH4 clock 125-165 MHz); if it is better, ship it in images (build it in the workflow from the fork) and maybe a profile-guided build.
-2. Modern 32-bit: only worth more work if WinCE becomes realistic; otherwise drop it. If continued: backtrace the RE2 double free (SIGABRT handler or a symbol build) and the Code Veronica hang. The option prefix is done (`flycast_`, build `out/modern-dArkOSen-5`).
+2. Modern 32-bit: WinCE is dropped (8.1), so the only reason left to keep `flycast32_modern` is if modern flycast ran ordinary games better than the legacy cores on the R36S; Code Veronica hanging suggests not. Decide with the user: either try one or two ordinary games with it, or remove it from the console (core, `.info`, the 6 ES core lists; `es_systems.cfg.before-flycast32` holds the pre-install lists) and from `device-install.sh`. The option prefix is done (`flycast_`, build `out/modern-dArkOSen-5`); keep the fork branch either way.
 3. Offer the addrspace fix upstream (flyinghead/flycast); it is independent of our use. Branch `addrspace-shift-fix` on the fork is ready (see 8.2); opening the pull request is the user's call.
