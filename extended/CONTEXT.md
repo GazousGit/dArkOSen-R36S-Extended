@@ -94,7 +94,7 @@ Hand-off for the next conversation. `components/flycast_32_hack/README.md` has t
 ### 8.1 Goal and what the user decided
 
 - Two aims: (1) the faster "hacked" 32-bit flycast the user tested in 2025 (GTA2 runs better), improved; (2) Windows CE games playable, above all Resident Evil 2 (only RE3 gets past the WinCE logo on the legacy cores).
-- New cores go **beside** ArkOS's `flycast32_rumble`, never over it (the user had an ES entry "flycast32_rumble_hack" for the 2025 binary). Forks of the sources live on GazousGit; local clones are git-ignored, our scripts and README are committed (the user agreed to keep `components/` tracked; the alternative, moving them to the fork, was offered and not chosen).
+- New cores go **beside** ArkOS's `flycast32_rumble`, never over it (the user had an ES entry "flycast32_rumble_hack" for the 2025 binary). Forks of the sources live on GazousGit; local clones are git-ignored, our scripts and README are committed. Still open: the user asked whether to git-ignore `components/`; I recommended keeping the scripts tracked (or moving them to the fork) and got no answer yet.
 
 ### 8.2 Sources, forks, local layout
 
