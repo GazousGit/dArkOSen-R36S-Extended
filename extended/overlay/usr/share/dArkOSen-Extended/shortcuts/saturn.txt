@@ -1,0 +1,7 @@
+SATURN STANDALONE (YABASANSHIRO)
+# yabasanshiro-pirry (README of its repository): SELECT opens its menu with save / load
+# state, reset, discs, settings. Built in, not changed by the hotkey layout. The older
+# yabasanshiro build is not documented. SELECT + START quits through the exit daemon.
+SELECT ......... menu (states inside)
+SELECT + START . quit the game
+In the menu: A = select, B = back

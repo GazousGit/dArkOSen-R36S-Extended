@@ -1,0 +1,13 @@
+PPSSPP
+# PPSSPP 1.20 (emulator "standalone"), universal hotkey layout: [ControlMapping] in
+# /roms/psp/ppsspp/PSP/SYSTEM/controls.ini. The 2021 build keeps its own single keys, see
+# ppsspp.standalone-2021.txt.
+FN ............ pause menu
+Hold SELECT and press:
+ START ........ quit the game
+ R1 / L1 ...... save / load state
+ R2 / L2 ...... next / previous slot
+ L3 ........... fast-forward on/off
+ LEFT ......... rewind
+ B ............ reset
+ A ............ screenshot

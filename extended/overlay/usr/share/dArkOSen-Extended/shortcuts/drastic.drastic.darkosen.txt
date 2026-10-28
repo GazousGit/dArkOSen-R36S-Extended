@@ -1,0 +1,6 @@
+DRASTIC (dArkOSen keys)
+# controls_b lines in /opt/drastic/config/drastic.cfg as shipped by dArkOSen.
+L3 ............ menu (states inside)
+FN ............ swap screens
+L2 / R2 ....... screen layout
+SELECT + START  quit the game

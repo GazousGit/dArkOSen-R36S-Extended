@@ -1,0 +1,14 @@
+RETROARCH (dArkOSen keys)
+# dArkOSen's own bindings (10152026 image, both builds), shown while the hotkey layout is
+# "darkosen". SELECT + UP is frame advance: it pauses the game; SELECT + R3 unpauses.
+Menu: FN, or hold SELECT 2 seconds
+Hold SELECT and press:
+ START ........ quit the game
+ B / A ........ save / load state
+ X / Y ........ next / previous slot
+ RIGHT ........ fast-forward on/off
+ DOWN ......... fast-forward (hold)
+ LEFT ......... rewind (hold)
+ UP ........... frame advance (pauses)
+ R3 ........... pause on/off
+ R2 / L3 ...... reset / screenshot

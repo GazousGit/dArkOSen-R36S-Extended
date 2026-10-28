@@ -31,10 +31,11 @@
 # =======================================================
 set -euo pipefail
 
-ROOT="${1:?usage: inject.sh ROOT [VIDEOS_DIR] [TAG] [ROMS_DIR]}"
+ROOT="${1:?usage: inject.sh ROOT [VIDEOS_DIR] [TAG] [ROMS_DIR] [RETRORUN_HOTKEYS_DIR]}"
 VIDEOS="${2:-}"
 TAG="${3:-dev}"
 ROMSDIR="${4:-}"
+RRDIR="${5:-}"
 ROOT="${ROOT%/}"
 SEED="$ROOT/usr/share/dArkOSen-Extended/bootvideos"
 OVERLAY_SEED="$ROOT/usr/share/dArkOSen-Extended/overlay"
@@ -184,6 +185,32 @@ if [ -f "$N64TOOL" ] && [ -f "$ESSET" ]; then
     bash "$N64TOOL" --es-default "$ESSET"
     echo "inject: N64 default emulator -> $(grep -c '<string name="n64\.' "$ESSET") line(s) in ${ESSET#"$ROOT"} (retroarch / mupen64plus_next)"
 fi
+# retrorun hotkeys build (local builds only: the binaries are not in the repository, see
+# components/retrorun_hotkeys/). dArkOSen's binaries stay next to them as .darkosen, as
+# device-install.sh does; the default config path retrorun uses without -c (Saturn's launcher)
+# is linked to dArkOSen's retrorun.cfg. The layout step below then fills in the retrorun lines.
+NRR=0
+if [ -n "$RRDIR" ]; then
+    for b in retrorun retrorun32; do
+        [ -f "$RRDIR/$b" ] || { echo "inject: $RRDIR/$b not found" >&2; exit 1; }
+        grep -q retrorun_hotkey_menu "$RRDIR/$b" || { echo "inject: $RRDIR/$b is not the retrorun hotkeys build" >&2; exit 1; }
+        cur="$ROOT/usr/local/bin/$b"
+        [ -f "$cur" ] || { echo "inject: $cur not found in the image" >&2; exit 1; }
+        grep -q retrorun_hotkey_menu "$cur" || cp -p "$cur" "$cur.darkosen"
+        cp -f "$RRDIR/$b" "$cur"; chmod 755 "$cur"; chown --reference="$cur.darkosen" "$cur"
+        NRR=$((NRR + 1))
+    done
+    mkdir -p "$ROOT/storage/.config/distribution/configs"
+    ln -sfn /home/ark/.config/retrorun.cfg "$ROOT/storage/.config/distribution/configs/retrorun.cfg"
+    echo "inject: retrorun hotkeys build -> $NRR binaries in /usr/local/bin (dArkOSen's kept as .darkosen)"
+fi
+# Universal hotkey layout (RetroArch 64/32 and the standalone N64 emulator get DuckStation's
+# SELECT + ... combinations; Options > Shortcuts switches back to dArkOSen's values)
+SCTOOL="$OVERLAY/opt/system/Shortcuts.sh"
+if [ -f "$SCTOOL" ]; then
+    SHORTCUTS_ROOT="$ROOT" bash "$SCTOOL" --layout universal
+    echo "inject: hotkey layout -> $(SHORTCUTS_ROOT="$ROOT" bash "$SCTOOL" --layout-status)"
+fi
 
 # EmulationStation settings for local builds (optional): ROMS_DIR/es_settings.cfg holds
 # lines in ES's own format, e.g. <string name="GamelistViewStyle" value="video" />.
@@ -224,6 +251,7 @@ DARKOSEN_EXTENDED_REPO=${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}
 DARKOSEN_EXTENDED_ROMS_FILES=$NROMS
 DARKOSEN_EXTENDED_THEMES=$NTHEMES
 DARKOSEN_EXTENDED_ES_SETTINGS=$NES
+DARKOSEN_EXTENDED_RETRORUN_HOTKEYS=$NRR
 EOF
 
 echo "inject: done"
@@ -236,3 +264,4 @@ echo "inject: overlay   -> $NOVERLAY file(s)"
 echo "inject: roms      -> $NROMS file(s) appended to /roms.tar"
 echo "inject: themes    -> $NTHEMES theme(s) added to /tempthemes"
 echo "inject: settings  -> $NES line(s) from es_settings.cfg"
+echo "inject: retrorun  -> $NRR hotkeys build binaries"

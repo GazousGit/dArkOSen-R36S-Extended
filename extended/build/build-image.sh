@@ -38,13 +38,18 @@
 #   --split SIZE        7z volume size (default 1900m)
 #   --name NAME         output base name
 #                       (default dArkOSen-Extended_R36_<TAG>)
+#   --retrorun-hotkeys DIR
+#                       local builds: install the retrorun hotkeys build
+#                       (DIR/retrorun, DIR/retrorun32 from
+#                       components/retrorun_hotkeys/build.sh) over
+#                       dArkOSen's binaries, which are kept as .darkosen
 #   --keep-img          keep the modified .img
 #   --no-pack           stop after modifying the image
 # =======================================================
 set -euo pipefail
 
 REPO="djparentx/dArkOSen-R36S"
-TAG=""; IMG=""; WORK="$PWD/work"; OUT=""; VIDEOS=""; ROMS=""
+TAG=""; IMG=""; WORK="$PWD/work"; OUT=""; VIDEOS=""; ROMS=""; RRHK=""
 LEVEL=5; SPLIT="1900m"; NAME=""; KEEP_IMG=0; NO_PACK=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -55,12 +60,13 @@ while [ $# -gt 0 ]; do
         --out)      OUT=$2; shift 2 ;;
         --videos)   VIDEOS=$2; shift 2 ;;
         --roms)     ROMS=$2; shift 2 ;;
+        --retrorun-hotkeys) RRHK=$2; shift 2 ;;
         --level)    LEVEL=$2; shift 2 ;;
         --split)    SPLIT=$2; shift 2 ;;
         --name)     NAME=$2; shift 2 ;;
         --keep-img) KEEP_IMG=1; shift ;;
         --no-pack)  NO_PACK=1; shift ;;
-        -h|--help)  sed -n '2,43p' "$0"; exit 0 ;;
+        -h|--help)  sed -n '2,48p' "$0"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -74,6 +80,7 @@ done
 SEVENZ=$(command -v 7z || command -v 7zz || true)
 [ -n "$SEVENZ" ] || { echo "build-image: missing 7z (apt install p7zip-full)" >&2; exit 1; }
 [ -n "$VIDEOS" ] && VIDEOS="$(cd "$VIDEOS" && pwd)"
+[ -n "$RRHK" ] && RRHK="$(cd "$RRHK" && pwd)"
 [ -n "$ROMS" ] && ROMS="$(cd "$ROMS" && pwd)"
 
 mkdir -p "$WORK"; WORK="$(cd "$WORK" && pwd)"
@@ -251,7 +258,7 @@ if [ -n "$ROMS" ] && [ "$ROOTTYPE" = btrfs ]; then
 fi
 [ "$ROOT_FREE" -gt 8192 ] || die "root filesystem has less than 8 MB free"
 
-bash "$INJECT" "$MNT" "$VIDEOS" "$TAG" "$ROMS"
+bash "$INJECT" "$MNT" "$VIDEOS" "$TAG" "$ROMS" "$RRHK"
 STAMP=$(cat "$MNT/etc/dArkOSen-Extended.release")
 ROMSFILES=$(sed -n 's/^DARKOSEN_EXTENDED_ROMS_FILES=//p' <<<"$STAMP")
 SHIPPED=0
@@ -337,7 +344,8 @@ OURREPO="${GITHUB_REPOSITORY:-GazousGit/dArkOSen-R36S-Extended}"
         echo "- $ROMSFILES personal file(s) for the roms partition, extracted into \`/roms\` by the first boot. **This image is a private build: do not publish or share it.**"
     fi
     echo "- **Extra tools** in *Options > Advanced*: \"Swap A-B in EmulationStation only\" (flip A/B in ES without touching the emulators), \"Dreamcast Tuning (retrorun)\" (320x240 internal resolution and the other speed options RetroArch32 uses, with backup/restore and an FPS counter), \"N64 Tuning (mupen64plus-next)\" (the wiki settings, toggles, per-game option files) and \"PPSSPP Sync standalone and 2021\" (share per-game settings between the two PPSSPP builds)."
-    echo "- **Shortcuts** in *Options*: pages with the key combinations of the system and of the emulators (quit, menu, save states), and a **2-second reminder before each game** with the page of the emulator about to start. On/off and duration in the tool; the texts can be replaced by your own files in \`/roms/shortcuts\`."
+    echo "- **Shortcuts** in *Options*: pages with the key combinations of the system, of EmulationStation and of the emulators (quit, menu, save states), and a **reminder before each game** (10 s, or A to go on) with the page of the emulator about to start, button names in the colours of the R36S. On/off and duration in the tool; the texts can be replaced by your own files in \`/roms/shortcuts\`."
+    echo "- **Universal hotkey layout** in RetroArch (every core, 64 and 32-bit), DuckStation, PPSSPP 1.20, the standalone N64 emulator, Flycast standalone and DraStic: **FN = menu, SELECT + START = quit, SELECT + R1 / L1 = save / load state, SELECT + R2 / L2 = next / previous slot, SELECT + L3 = fast-forward**, plus SELECT + LEFT rewind, B reset, A screenshot, Y pause where the emulator has them (Flycast and DraStic take single buttons only: FN opens their menu, states inside). Holding SELECT no longer opens the RetroArch menu, and SELECT + UP no longer freezes the game (dArkOSen binds it to frame advance). The Wi-Fi / Bluetooth toggles of the hotkey daemon (SELECT + L1 / R1) are off while a game runs. Yabasanshiro keeps its own keys; retrorun (keys compiled in) follows once the opt-in retrorun hotkeys build of components/retrorun_hotkeys/ is installed over SSH (not part of the image). *Options > Shortcuts > Hotkey layout* puts dArkOSen's own values back."
     echo "- **N64 settings of the ArkOS wiki pre-applied** for the RetroArch cores \`mupen64plus_next\` and \`mupen64plus\`: 320x240, threaded renderer, hybrid filter, color buffer copy and overscan off, framebuffer and LOD emulation left on (dArkOS ships the cores at their defaults). **The N64 default emulator in EmulationStation is \`retroarch\` / \`mupen64plus_next\`** instead of dArkOSen's \`retroarch32\` / \`parallel_n64\`, as the per-game list of [R36S-Game-Compatibility-Lists](https://github.com/GazousGit/R36S-Game-Compatibility-Lists) assumes; per-game choices in \`gamelist.xml\` are untouched, and N64 > Advanced System Options in ES changes it back."
     echo
     echo "> **After flashing, run *Options > System > Update-dArkOSen* once.** The official 09302026 image needs djparentx's 09302026b update, otherwise 32-bit emulators (retrorun32, retroarch32: Dreamcast, Naomi and others) have no sound. This repack does not include OTA updates."

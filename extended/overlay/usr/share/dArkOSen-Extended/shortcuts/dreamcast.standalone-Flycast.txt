@@ -1,0 +1,8 @@
+FLYCAST STANDALONE
+# Universal hotkey layout: /home/ark/.config/flycast/mappings/SDL_GO-Super Gamepad.cfg.
+# Flycast takes single buttons only: no SELECT + ... combinations, the states are in the
+# menu. SELECT + START quits through dArkOSen's exit daemon.
+FN or SELECT ... menu (states inside)
+L3 ............. fast-forward (hold)
+SELECT + START . quit the game
+In the menu: A = select, B = back

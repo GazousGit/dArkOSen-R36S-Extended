@@ -1,14 +1,16 @@
-SYSTEM KEYS
-# From dArkOSen's hotkey daemon (OGAGE/README.md and OGAGE/src/main.rs in the repository).
-# Left out because that documentation and that source disagree: Hotkey + LEFT / RIGHT and
-# Hotkey + L2 / R2 (volume or gamma).
-Hotkey = FN, or R3 (press the right stick)
- Hotkey + UP / DOWN .... brightness
- Hotkey + VOL + / - .... brightness
+SYSTEM KEYS (ALWAYS ACTIVE)
+# From dArkOSen's hotkey daemon (OGAGE/src/main.rs in its repository). It reads the pad
+# directly, so these also fire inside the emulators. With the universal hotkey layout,
+# SELECT + L1 / R1 (Wi-Fi / Bluetooth) do nothing while a game runs: they are save / load
+# state there.
+Hotkey = FN, or R3 (press right stick)
+ Hotkey + UP/DOWN, VOL . brightness
+ Hotkey + LEFT/RIGHT ... gamma
  Hotkey + L1 / R1 ...... volume
  Hotkey + L3 ........... mute on/off
  Hotkey + POWER ........ safe shutdown
  POWER (short press) ... sleep
- SELECT + R3 ........... battery level, spoken
- SELECT + L1 ........... Wi-Fi on/off
- SELECT + R1 ........... Bluetooth on/off
+ SELECT + R3 .......... battery, voice
+ SELECT + L1 / R1 ...... Wi-Fi / BT *
+ L3 + A ................ SaveSync
+* not during a game (universal layout)

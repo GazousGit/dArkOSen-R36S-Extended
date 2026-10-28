@@ -1,0 +1,6 @@
+FLYCAST STANDALONE (dArkOSen keys)
+# /home/ark/.config/flycast/mappings/SDL_GO-Super Gamepad.cfg as shipped by dArkOSen: SELECT
+# opens the menu, nothing else is bound. SELECT + START quits through the exit daemon.
+SELECT ......... menu (states inside)
+SELECT + START . quit the game
+In the menu: A = select, B = back

@@ -1,0 +1,14 @@
+DUCKSTATION (dArkOSen keys)
+# [Hotkeys] in /home/ark/.local/share/duckstation/settings.ini as shipped by dArkOSen
+# 10152026 (SDL names: Back = SELECT). SELECT + UP / DOWN opens the save-state selector;
+# while SELECT is held, UP and DOWN move through it the other way round.
+Hold SELECT and press:
+ START ........ quit the game
+ X ............ menu
+ R2 / L2 ...... save / load state
+ UP / DOWN .... next / previous slot
+ RIGHT ........ fast-forward on/off
+ LEFT ......... rewind (hold)
+ B ............ reset
+ A ............ screenshot
+ Y ............ 4:3 / 16:9

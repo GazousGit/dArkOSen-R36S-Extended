@@ -1,0 +1,7 @@
+PPSSPP 2021
+# The 2021 build (emulator "standalone-2021", /roms/psp/ppsspp-2021/PSP/SYSTEM/controls.ini)
+# takes single keys only and is not changed by the hotkey layout.
+ SELECT + START  quit the game
+ R3 ........... save state
+ L3 ........... load state
+Menu, slots, speed: not on the pad.

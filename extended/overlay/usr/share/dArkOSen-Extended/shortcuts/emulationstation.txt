@@ -1,0 +1,12 @@
+EMULATIONSTATION
+# From the help bar at the bottom of EmulationStation's screens, which always lists the
+# keys of the current screen: check it when in doubt. Only shown in Options > Shortcuts.
+ START ........ main menu
+ SELECT ....... options: sort, filter,
+                jump to, random game
+ A ............ launch / choose
+ B ............ back
+ Y ............ favorite on/off
+ L1 / R1 ...... previous / next system
+Distro Version (main menu) = update
+System keys: see the SYSTEM page.
