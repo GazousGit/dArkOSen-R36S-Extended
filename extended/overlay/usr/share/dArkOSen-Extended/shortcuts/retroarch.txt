@@ -1,11 +1,14 @@
 RETROARCH
-# From /home/ark/.config/retroarch/retroarch.cfg as shipped by dArkOSen 09302026 (the 32-bit
-# build has the same bindings): hotkey = button 12 (SELECT), menu = "hold SELECT" combo.
+# Universal hotkey layout (Options > Shortcuts > Hotkey layout). Hotkey = button 12 (SELECT),
+# menu = button 16 (FN) in /home/ark/.config/retroarch/retroarch.cfg and in
+# retroarch32/retroarch.cfg (every core, 64 and 32-bit).
+FN ............ menu
 Hold SELECT and press:
  START ........ quit the game
- B / A ........ save / load state
- X / Y ........ next / previous slot
- RIGHT ........ fast-forward on/off
- R3 ........... pause
- R2 ........... reset
-Menu: hold SELECT for 2 seconds
+ R1 / L1 ...... save / load state
+ R2 / L2 ...... next / previous slot
+ L3 ........... fast-forward on/off
+ LEFT ......... rewind (hold)
+ B ............ reset
+ A ............ screenshot
+ Y ............ pause on/off

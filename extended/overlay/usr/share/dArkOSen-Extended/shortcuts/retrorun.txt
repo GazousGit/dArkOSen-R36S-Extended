@@ -1,9 +1,15 @@
 RETRORUN
-# dArkOSen's retrorun.cfg sets retrorun_alternative_input_mode = true; the combinations for
-# that mode come from retrorun's doc/CONTROLS.md.
+# Shown with the retrorun hotkeys build (components/retrorun_hotkeys: navy1978/retrorun 3.0.0
+# plus retrorun_hotkey_* settings in retrorun.cfg) while the universal hotkey layout is on;
+# otherwise retrorun.darkosen.txt. SELECT + START is retrorun's own quit and also dArkOSen's
+# exit daemon. Save / load state are retrorun's historical R1 / L1.
+FN ............ menu (settings)
+L3 + R3 ....... menu too
 Hold SELECT and press:
  START ........ quit the game
- X ............ menu (settings)
- A ............ pause
+ R1 / L1 ...... save / load state
+ R2 / L2 ...... next / previous slot
+ L3 ........... fast-forward on/off
+ A ............ pause on/off
  Y ............ show the FPS
  B ............ screenshot

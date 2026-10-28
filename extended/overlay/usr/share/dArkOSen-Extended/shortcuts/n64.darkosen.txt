@@ -1,0 +1,8 @@
+N64 STANDALONE (dArkOSen keys)
+# Rice, Glide64mk2 and GlideN64 are the same emulator with another video plugin.
+# From [CoreEvents] in /home/ark/.config/mupen64plus/mupen64plus.cfg as shipped by dArkOSen.
+Hold SELECT and press:
+ START ........ quit the game
+ R2 / L2 ...... save / load state
+ A ............ pause on/off
+ X ............ reset

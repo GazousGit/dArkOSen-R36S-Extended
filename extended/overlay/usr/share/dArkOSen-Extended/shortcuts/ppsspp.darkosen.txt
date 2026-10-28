@@ -1,0 +1,7 @@
+PPSSPP (dArkOSen keys)
+# [ControlMapping] in /roms/psp/ppsspp/PSP/SYSTEM/controls.ini as shipped by dArkOSen:
+# single keys, no modifier. Pause, rewind and speed are on the keyboard only.
+ SELECT + START  quit the game
+ R3 ........... save state
+ L3 ........... load state
+Menu, slots, speed: not on the pad.

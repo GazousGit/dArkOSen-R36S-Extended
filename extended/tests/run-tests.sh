@@ -63,6 +63,135 @@ EOF
     # dArkOSen's es_settings.cfg: the settings follow the XML declaration, no root element
     printf '<?xml version="1.0"?>\n<bool name="InvertButtons" value="true" />\n<string name="ThemeSet" value="es-theme-retrodark" />\n' > "$R/home/ark/.emulationstation/es_settings.cfg"
     printf 'reicast_alpha_sorting = "per-strip (fast, least accurate)"\nsnes9x_overclock = "disabled"\n' > "$R/home/ark/.config/retroarch/retroarch-core-options.cfg"
+    # the hotkey lines of dArkOSen's retroarch.cfg (both builds) and mupen64plus.cfg, as in 10152026
+    mkdir -p "$R/home/ark/.config/retroarch32" "$R/home/ark/.config/mupen64plus"
+    for b in retroarch retroarch32; do
+        cat > "$R/home/ark/.config/$b/retroarch.cfg" <<EOF
+input_enable_hotkey_btn = "12"
+input_exit_emulator_btn = "13"
+input_frame_advance_btn = "8"
+input_hold_fast_forward_btn = "9"
+input_load_state_btn = "1"
+input_menu_toggle_btn = "nul"
+input_menu_toggle_gamepad_combo = "8"
+input_pause_toggle_btn = "15"
+input_player1_a_btn = "1"
+input_quit_gamepad_combo = "4"
+input_remapping_directory = "~/.config/$b/config/remaps"
+input_reset_btn = "7"
+input_rewind_btn = "10"
+input_save_state_btn = "0"
+input_screenshot_btn = "14"
+input_state_slot_decrease_btn = "3"
+input_state_slot_increase_btn = "2"
+input_toggle_fast_forward_btn = "11"
+EOF
+    done
+    cat > "$R/home/ark/.config/mupen64plus/mupen64plus.cfg" <<'EOF'
+[CoreEvents]
+
+# Joystick event string for stopping the emulator
+Joy Mapping Stop = "J0B12/B13"
+# Joystick event string for saving the emulator state
+Joy Mapping Save State = "J0B12/B7"
+# Joystick event string for loading the emulator state
+Joy Mapping Load State = "J0B12/B6"
+# Joystick event string for advancing the save state slot
+Joy Mapping Increment Slot = ""
+# Joystick event string for resetting the emulator
+Joy Mapping Reset = "J0B12/B2"
+# Joystick event string for taking a screenshot
+Joy Mapping Screenshot = ""
+# Joystick event string for pausing the emulator
+Joy Mapping Pause = "J0B12/B1"
+# Joystick event string for fast-forward
+Joy Mapping Fast Forward = ""
+
+
+[Input-SDL-Control1]
+
+# Mupen64Plus SDL Input Plugin config parameter version number.  Please don't change this version number.
+version = 2.000000
+EOF
+    # DuckStation, PPSSPP (the /opt backup and the copy next to the roms), Flycast standalone,
+    # DraStic, the SDL controller database and the daemon scripts, as shipped by 10152026
+    mkdir -p "$R/home/ark/.local/share/duckstation" "$R/opt/ppsspp/backupforromsfolder/ppsspp/PSP/SYSTEM" \
+             "$R/home/ark/.config/flycast/mappings" "$R/opt/drastic/config" "$R/opt/inttools"
+    cat > "$R/home/ark/.local/share/duckstation/settings.ini" <<'EOF'
+[Main]
+PauseOnMenu = true
+SaveStateOnExit = true
+
+[Hotkeys]
+LoadSelectedSaveState = SDL-0/Back & SDL-0/+LeftTrigger
+OpenPauseMenu = SDL-0/Back & SDL-0/X
+PowerOff = SDL-0/Back & SDL-0/Start
+Reset = SDL-0/Back & SDL-0/B
+Rewind = SDL-0/Back & SDL-0/DPadLeft
+SaveSelectedSaveState = SDL-0/Back & SDL-0/+RightTrigger
+Screenshot = SDL-0/Back & SDL-0/A
+SelectNextSaveStateSlot = SDL-0/Back & SDL-0/DPadUp
+SelectPreviousSaveStateSlot = SDL-0/Back & SDL-0/DPadDown
+ToggleFastForward = SDL-0/Back & SDL-0/DPadRight
+ToggleWidescreen = SDL-0/Back & SDL-0/Y
+
+[Logging]
+LogLevel = Info
+EOF
+    # PPSSPP's backup copy (the one next to the roms appears at the first launch); PPSSPP
+    # writes the file with a UTF-8 byte order mark, like the real one
+    printf '\xef\xbb\xbf' > "$R/opt/ppsspp/backupforromsfolder/ppsspp/PSP/SYSTEM/controls.ini"
+    cat >> "$R/opt/ppsspp/backupforromsfolder/ppsspp/PSP/SYSTEM/controls.ini" <<'EOF'
+[ControlMapping]
+Up = 10-19
+Down = 10-20
+Select = 10-196
+Start = 10-197
+SpeedToggle = 1-68
+Pause = 1-111
+Rewind = 1-67
+Save State = 10-107
+Load State = 10-106
+EOF
+    cat > "$R/home/ark/.config/flycast/mappings/SDL_GO-Super Gamepad.cfg" <<'EOF'
+[analog]
+bind0 = 0-:btn_analog_left
+bind1 = 0+:btn_analog_right
+
+[digital]
+bind0 = 0:btn_a
+bind1 = 1:btn_b
+bind10 = 10:btn_dpad1_left
+bind11 = 11:btn_dpad1_right
+bind12 = 12:btn_menu
+bind13 = 13:btn_start
+bind2 = 2:btn_y
+bind3 = 3:btn_x
+
+[emulator]
+dead_zone = 10
+mapping_name = GO-Super Gamepad
+version = 4
+EOF
+    cat > "$R/opt/drastic/config/drastic.cfg" <<'EOF'
+frameskip_type = 2
+controls_a[CONTROL_INDEX_MENU] = 1038
+controls_a[CONTROL_INDEX_SWAP_SCREENS] = 115
+controls_b[CONTROL_INDEX_UP] = 1032
+controls_b[CONTROL_INDEX_MENU] = 1038
+controls_b[CONTROL_INDEX_SAVE_STATE] = 65535
+controls_b[CONTROL_INDEX_SWAP_SCREENS] = 1040
+EOF
+    cat > "$R/opt/inttools/gamecontrollerdb.txt" <<'EOF'
+19000000010000000100000001010000,odroidgo2 joypad,a:b1,b:b0,platform:Linux,
+190000004b4800000011000000010000,GO-Super Gamepad,x:b2,a:b1,b:b0,y:b3,back:b12,start:b13,dpleft:b10,dpdown:b9,dpright:b11,dpup:b8,leftshoulder:b4,lefttrigger:b6,rightshoulder:b5,righttrigger:b7,leftstick:b14,rightstick:b15,leftx:a0,lefty:a1,rightx:a2,righty:a3,platform:Linux,
+03000000091200000031000011010000,OpenSimHardware OSH PB Controller,a:b0,b:b1,platform:Linux,
+EOF
+    printf '#!/bin/bash\necho wifi toggled\n' > "$R/usr/local/bin/toggle_wifi.sh"; printf '#!/bin/bash\necho bt toggled\n' > "$R/usr/local/bin/toggle_bt.sh"
+    chmod 755 "$R/usr/local/bin/toggle_wifi.sh" "$R/usr/local/bin/toggle_bt.sh"
+    # retrorun.cfg (first lines of 10152026's) and dArkOSen's own retrorun builds, which know no retrorun_hotkey_* setting
+    printf '# ---- RETRORUN INTERNAL SETTINGS ----\nretrorun_screenshot_folder = /roms/dreamcast\nretrorun_alternative_input_mode = true\nretrorun_swap_l1r1_with_l2r2 = true\n# ---- FLYCAST ----\nreicast_threaded_rendering = enabled\n' > "$R/home/ark/.config/retrorun.cfg"
+    printf 'stock retrorun 3.0.0\n' > "$R/usr/local/bin/retrorun"; printf 'stock retrorun32 3.0.0\n' > "$R/usr/local/bin/retrorun32"
 }
 xml_ok() { python3 -I -c 'import sys,xml.etree.ElementTree as E; E.parse(sys.argv[1])' "$1"; }
 count_systems() { python3 -I -c 'import sys,xml.etree.ElementTree as E; print(sum(1 for s in E.parse(sys.argv[1]).getroot() if s.findtext("name")==sys.argv[2]))' "$1" "$2"; }
@@ -348,6 +477,81 @@ RT2="$T/roottheme2"; make_root "$RT2"; cp "$T/roms.tar.orig" "$RT2/roms.tar"    
 bash "$INJECT" "$RT2" "" 09302026 "$PT" >/dev/null 2>&1
 expect "no /tempthemes: themes go into roms.tar" bash -c 'tar -tf "$1" | grep -qx roms/themes/es-theme-nes-box/theme.xml' _ "$RT2/roms.tar"
 
+echo "== time zone and A/B buttons from es_settings.cfg (what ES's menu does)"
+RZ="$T/roottz"; make_root "$RZ"; cp "$T/roms.tar.orig" "$RZ/roms.tar"
+mkdir -p "$RZ/usr/share/zoneinfo/Europe" "$RZ/usr/share/zoneinfo/America" "$RZ/var/cache"
+echo paris > "$RZ/usr/share/zoneinfo/Europe/Paris"; echo regina > "$RZ/usr/share/zoneinfo/America/Regina"
+ln -s /usr/share/zoneinfo/America/Regina "$RZ/etc/localtime"
+printf 'kodi.enabled=1\nsystem.timezone=America/Regina\n' > "$RZ/home/ark/.emulationstation.conf"
+# the image ships the US layout: b_swap.sh's flag is there and keys.gptk has a = esc
+touch "$RZ/var/cache/Switch_AB"; printf 'a = esc\nb = enter\nx = x\n' > "$RZ/opt/inttools/keys.gptk"
+cat > "$RZ/usr/local/bin/b_swap.sh" <<'EOF'
+#!/bin/bash
+# reduced dArkOSen b_swap.sh: same layout (paths set at the top, flag = US)
+if [ "$(id -u)" -ne 0 ]; then
+    exec sudo -- "$0" "$@"
+fi
+
+AB_FLAG="/var/cache/Switch_AB"
+KEYS="/opt/inttools/keys.gptk"
+KODI="/home/ark/.kodi/not-in-this-image.xml"
+PM="/opt/system/Tools/PortMaster/gamecontrollerdb.txt"
+ES="/home/ark/.emulationstation/es_settings.cfg"
+
+if [[ -f "$AB_FLAG" ]]; then
+	sed -i -e 's/^a = .*/a = enter/' -e 's/^b = .*/b = esc/' "$KEYS"
+	[[ -f "$PM" ]] && sed -i '/^190000004b4800000011000000010000,/ s/a:b0,b:b1/a:b1,b:b0/' "$PM"
+	sed -i '/bool name="InvertButtons"/d' "$ES"
+	sed -i 's/a/b/' "$KODI"
+	rm -f "$AB_FLAG"
+else
+	sed -i -e 's/^b = .*/b = enter/' -e 's/^a = .*/a = esc/' "$KEYS"
+	[[ -f "$PM" ]] && sed -i '/^190000004b4800000011000000010000,/ s/a:b1,b:b0/a:b0,b:b1/' "$PM"
+	sed -i '1a <bool name="InvertButtons" value="true" />' "$ES"
+	sed -i 's/a/b/' "$KODI"
+	touch "$AB_FLAG"
+fi
+EOF
+chmod 755 "$RZ/usr/local/bin/b_swap.sh"; cp "$RZ/usr/local/bin/b_swap.sh" "$T/b_swap.orig"
+# PortMaster's file reaches /opt/system/Tools (= /roms/tools bind-mounted) only through roms.tar
+mkdir -p "$T/pmsrc/roms/tools/PortMaster" "$RZ/opt/system/Tools"
+printf '190000004b4800000011000000010000,GO-Super Gamepad,a:b0,b:b1,x:b2,platform:Linux,\n' > "$T/pmsrc/roms/tools/PortMaster/gamecontrollerdb.txt"
+tar -rf "$RZ/roms.tar" -C "$T/pmsrc" roms/tools/PortMaster/gamecontrollerdb.txt
+NZ=$(tar -tf "$RZ/roms.tar" | wc -l)
+PZ="$T/romstz"; mkdir -p "$PZ"
+printf '<string name="Language" value="fr" />\r\n<string name="system.timezone" value="Europe/Paris" />\r\n<bool name="InvertButtons" value="false" />\r\n<string name="Sega Atomiswave.governor" value="performance" />\r\n' > "$PZ/es_settings.cfg"
+OUTZ=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+ESZ="$RZ/home/ark/.emulationstation/es_settings.cfg"
+expect "inject with time zone and A/B exits 0" test "$RC" = "0"
+expect "/etc/localtime -> the chosen zone"     test "$(readlink "$RZ/etc/localtime")" = /usr/share/zoneinfo/Europe/Paris
+expect "the zone is in .emulationstation.conf once, other lines kept" bash -c 'test "$(grep -c "^system.timezone=" "$1")" = 1 && grep -qx system.timezone=Europe/Paris "$1" && grep -qx kodi.enabled=1 "$1"' _ "$RZ/home/ark/.emulationstation.conf"
+expect "neither goes into es_settings.cfg"     bash -c '! grep -q "system.timezone\|InvertButtons" "$1"' _ "$ESZ"
+expect "A/B: b_swap.sh ran (JP: flag gone, a = enter)" bash -c 'test ! -e "$1/var/cache/Switch_AB" && grep -qx "a = enter" "$1/opt/inttools/keys.gptk" && grep -qx "x = x" "$1/opt/inttools/keys.gptk"' _ "$RZ"
+expect "the image's b_swap.sh is left as it was" cmp -s "$T/b_swap.orig" "$RZ/usr/local/bin/b_swap.sh"
+expect "PortMaster's file switched inside roms.tar" bash -c 'tar -xOf "$1" roms/tools/PortMaster/gamecontrollerdb.txt | grep -q "a:b1,b:b0,x:b2"' _ "$RZ/roms.tar"
+expect "roms.tar keeps one entry per file"     bash -c 'test "$(tar -tf "$1" | wc -l)" = "$2" && test "$(tar -tf "$1" | grep -c gamecontrollerdb)" = 1' _ "$RZ/roms.tar" "$NZ"
+expect "nothing written to the image's /opt/system/Tools" bash -c 'test -z "$(ls -A "$1/opt/system/Tools")"' _ "$RZ"
+expect "the log says what was done"            bash -c 'grep -q "time zone -> Europe/Paris" <<<"$1" && grep -q "A/B buttons -> JP (dArkOSen.s b_swap.sh; 1 file(s) of /roms/tools switched in roms.tar)" <<<"$1"' _ "$OUTZ"
+expect "other settings still merged (name with a space)" bash -c 'grep -qx "<string name=\"Language\" value=\"fr\" />" "$1" && grep -qx "<string name=\"Sega Atomiswave.governor\" value=\"performance\" />" "$1"' _ "$ESZ"
+expect "build stamp counts the 4 settings"     grep -qx DARKOSEN_EXTENDED_ES_SETTINGS=4 "$RZ/etc/dArkOSen-Extended.release"
+OUTZ2=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+expect "second run: already JP, nothing switched back" bash -c 'test "$2" = 0 && grep -q "A/B buttons -> already JP" <<<"$1" && grep -qx "a = enter" "$3"' _ "$OUTZ2" "$RC" "$RZ/opt/inttools/keys.gptk"
+expect "second run: still one zone line"       test "$(grep -c '^system.timezone=' "$RZ/home/ark/.emulationstation.conf")" = 1
+printf '<bool name="InvertButtons" value="true" />\n' > "$PZ/es_settings.cfg"
+bash "$INJECT" "$RZ" "" 10152026 "$PZ" >/dev/null 2>&1
+expect "InvertButtons true switches back to US" bash -c 'test -e "$1/var/cache/Switch_AB" && grep -qx "a = esc" "$1/opt/inttools/keys.gptk" && grep -q "name=\"InvertButtons\" value=\"true\"" "$1/home/ark/.emulationstation/es_settings.cfg" && tar -xOf "$1/roms.tar" roms/tools/PortMaster/gamecontrollerdb.txt | grep -q "a:b0,b:b1"' _ "$RZ"
+mv "$RZ/opt/inttools" "$T/inttools.real"; ln -s /tmp "$RZ/opt/inttools"            # a link that would lead out of the image
+printf '<bool name="InvertButtons" value="false" />\n' > "$PZ/es_settings.cfg"
+OUTZ4=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+expect "a symbolic link on b_swap.sh's paths stops the switch" bash -c 'test "$2" != 0 && grep -q "/opt/inttools in the image is a symbolic link" <<<"$1" && test -e "$3/var/cache/Switch_AB"' _ "$OUTZ4" "$RC" "$RZ"
+rm "$RZ/opt/inttools"; mv "$T/inttools.real" "$RZ/opt/inttools"
+printf '<string name="system.timezone" value="Mars/Olympus" />\n' > "$PZ/es_settings.cfg"
+OUTZ3=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+expect "an unknown time zone stops the build"  bash -c 'test "$2" != 0 && grep -q "Mars/Olympus" <<<"$1"' _ "$OUTZ3" "$RC"
+printf '<string name="system.timezone" value="../../etc/passwd" />\n' > "$PZ/es_settings.cfg"
+bash "$INJECT" "$RZ" "" 10152026 "$PZ" >/dev/null 2>&1; RC=$?
+expect "a path outside zoneinfo is refused"    test "$RC" != 0
+
 echo "== grow-root.sh: more room on the root partition, EASYROMS moved along"
 GI="$T/grow.img"; S3=542720
 if command -v sfdisk >/dev/null && command -v jq >/dev/null && truncate -s 300M "$GI" \
@@ -573,52 +777,174 @@ expect "exactly one hook line in perfmax"     test "$(grep -c '# shortcuts-hook'
 expect "the hook is the last line"            bash -c 'tail -1 "$1" | grep -q "launch-reminder  # shortcuts-hook$"' _ "$PM6"
 expect "perfmax still parses, mode kept"      bash -c 'bash -n "$1" && test "$(stat -c %a "$1")" = 755' _ "$PM6"
 expect "upstream's lines untouched"           bash -c 'diff <(grep -v "# shortcuts-hook" "$1") <(cat "$2"; echo) >/dev/null' _ "$PM6" "$REPO/usr/local/bin/perfmax"
-expect "settings written, reminder on, 10 s"  test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=1 DELAY=10 "
-expect "--status reports the hook"            bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --status | grep -q "reminder=1 delay=10 hook=present"' _ "$SC" "$R6"
+expect "settings written, reminder on, 10 s, universal layout" test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=1 DELAY=10 LAYOUT=universal "
+expect "--status reports the hook"            bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --status | grep -q "reminder=1 delay=10 hook=present layout=universal files=universal"' _ "$SC" "$R6"
 cp "$REPO/usr/local/bin/perfmax" "$PM6"                                # an OTA update replaced perfmax
 printf 'REMINDER=0\nDELAY=4\n' > "$R6/home/ark/.config/shortcuts.conf" # and the user had turned the reminder off
 expect "--repair (self-repair service) exits 0" env BOOTVIDEO_ROOT="$R6" bash "$TOOL" --repair
 expect "hook re-added once"                   test "$(grep -c '# shortcuts-hook' "$PM6")" = "1"
 expect "the user's settings are kept"         test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=0 DELAY=4 "
 expect "--remove-hook gives upstream's file back" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --remove-hook && diff "$3" <(cat "$4"; echo) >/dev/null' _ "$SC" "$R6" "$PM6" "$REPO/usr/local/bin/perfmax"
-expect "pages: system, retroarch, retrorun first; README is not a page" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --pages | tr '\n' ' ')" = "system retroarch retrorun n64 standalone "
-expect "--export copies the pages and the README" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --export)" = "6" -a -f "$R6/roms/shortcuts/README.txt"
+expect "pages: system, ES, retroarch, retrorun first; README and .darkosen variants are not pages" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --pages | tr '\n' ' ')" = "system emulationstation retroarch retrorun drastic.drastic dreamcast.standalone-Flycast duckstation-standalone n64 ppsspp ppsspp.standalone-2021 saturn standalone "
+expect "--export copies the pages and the README" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --export)" = "$(ls "$STX"/*.txt | wc -l)" -a -f "$R6/roms/shortcuts/README.txt" -a -f "$R6/roms/shortcuts/retroarch.darkosen.txt"
 echo "MINE" > "$R6/roms/shortcuts/n64.txt"
 expect "a second export keeps edited files"   test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --export)" = "0" -a "$(cat "$R6/roms/shortcuts/n64.txt")" = "MINE"
-expect "pages shown before a game fit 40 columns" bash -c '! grep -v "^#" "$1"/retroarch.txt "$1"/retrorun.txt "$1"/n64.txt "$1"/standalone.txt | cut -d: -f2- | grep -qE "^.{39,}"' _ "$STX"
+expect "pages shown before a game fit 40 columns" bash -c '! grep -v "^#" "$1"/*.txt | grep -v "/README.txt:" | cut -d: -f2- | grep -qE "^.{39,}"' _ "$STX"
+expect "pages fit the screen: title + 11 lines" bash -c 'for f in "$1"/*.txt; do case "$f" in */README.txt) continue ;; esac; test "$(grep -vc "^#" "$f")" -le 12 || exit 1; done' _ "$STX"
+
+echo "== hotkey layout applied by the build (10 files), reversible byte for byte"
+RC6="$R6/home/ark/.config"
+RL="$T/layout-ref"; make_root "$RL"                                  # dArkOSen's files, for comparison
+ppsspp_roms() { mkdir -p "$1/roms/psp/ppsspp/PSP/SYSTEM"; cp "$RL/opt/ppsspp/backupforromsfolder/ppsspp/PSP/SYSTEM/controls.ini" "$1/roms/psp/ppsspp/PSP/SYSTEM/"; }
+ppsspp_roms "$RL"
+printf 'REMINDER=0\nDELAY=4\nLAYOUT=universal\n' > "$R6/home/ark/.config/shortcuts.conf"   # the user keeps the universal layout
+ppsspp_roms "$R6"                                                     # the first boot extracted the user's old copy: the repair service at boot migrates it
+expect "--repair migrates the PPSSPP copy that appeared next to the roms" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --repair | grep -q "re-applied to 1 file"' _ "$SC" "$R6"
+expect "retroarch.cfg: hold SELECT no longer opens the menu, FN does" bash -c 'grep -qx "input_menu_toggle_gamepad_combo = \"0\"" "$1" && grep -qx "input_menu_toggle_btn = \"16\"" "$1"' _ "$RC6/retroarch/retroarch.cfg"
+expect "retroarch.cfg: R1 / L1 save / load"        bash -c 'grep -qx "input_save_state_btn = \"5\"" "$1" && grep -qx "input_load_state_btn = \"4\"" "$1"' _ "$RC6/retroarch/retroarch.cfg"
+expect "retroarch.cfg: R2 / L2 next / previous slot" bash -c 'grep -qx "input_state_slot_increase_btn = \"7\"" "$1" && grep -qx "input_state_slot_decrease_btn = \"6\"" "$1"' _ "$RC6/retroarch/retroarch.cfg"
+expect "retroarch.cfg: L3 fast-forward, no hold, no frame advance" bash -c 'grep -qx "input_toggle_fast_forward_btn = \"14\"" "$1" && grep -qx "input_hold_fast_forward_btn = \"nul\"" "$1" && grep -qx "input_frame_advance_btn = \"nul\"" "$1"' _ "$RC6/retroarch/retroarch.cfg"
+expect "retroarch.cfg: B reset, A screenshot, Y pause, LEFT rewind" bash -c 'grep -qx "input_reset_btn = \"0\"" "$1" && grep -qx "input_screenshot_btn = \"1\"" "$1" && grep -qx "input_pause_toggle_btn = \"3\"" "$1" && grep -qx "input_rewind_btn = \"10\"" "$1"' _ "$RC6/retroarch/retroarch.cfg"
+expect "retroarch.cfg: hotkey, quit and the other lines untouched" bash -c 'grep -qx "input_enable_hotkey_btn = \"12\"" "$1" && grep -qx "input_exit_emulator_btn = \"13\"" "$1" && grep -qx "input_quit_gamepad_combo = \"4\"" "$1" && grep -qx "input_player1_a_btn = \"1\"" "$1" && test "$(wc -l < "$1")" = 18' _ "$RC6/retroarch/retroarch.cfg"
+expect "retroarch32 gets the same lines"       bash -c 'diff <(grep -v remapping "$1") <(grep -v remapping "$2") >/dev/null && grep -q "retroarch32/config/remaps" "$2"' _ "$RC6/retroarch/retroarch.cfg" "$RC6/retroarch32/retroarch.cfg"
+expect "mupen64plus.cfg: R1/L1 states, R2 slot, L3 fast-forward, Y/B/A" bash -c 'grep -qx "Joy Mapping Save State = \"J0B12/B5\"" "$1" && grep -qx "Joy Mapping Load State = \"J0B12/B4\"" "$1" && grep -qx "Joy Mapping Increment Slot = \"J0B12/B7\"" "$1" && grep -qx "Joy Mapping Fast Forward = \"J0B12/B14\"" "$1" && grep -qx "Joy Mapping Pause = \"J0B12/B3\"" "$1" && grep -qx "Joy Mapping Reset = \"J0B12/B0\"" "$1" && grep -qx "Joy Mapping Screenshot = \"J0B12/B1\"" "$1"' _ "$RC6/mupen64plus/mupen64plus.cfg"
+expect "mupen64plus.cfg: stop and the rest untouched" bash -c 'grep -qx "Joy Mapping Stop = \"J0B12/B13\"" "$1" && grep -qx "version = 2.000000" "$1" && test "$(wc -l < "$1")" = 24' _ "$RC6/mupen64plus/mupen64plus.cfg"
+DS6="$R6/home/ark/.local/share/duckstation/settings.ini"
+expect "DuckStation: R1/L1 states, L2/R2 slots, L3 fast-forward" bash -c 'grep -qx "LoadSelectedSaveState = SDL-0/Back & SDL-0/LeftShoulder" "$1" && grep -qx "SaveSelectedSaveState = SDL-0/Back & SDL-0/RightShoulder" "$1" && grep -qx "SelectPreviousSaveStateSlot = SDL-0/Back & SDL-0/+LeftTrigger" "$1" && grep -qx "SelectNextSaveStateSlot = SDL-0/Back & SDL-0/+RightTrigger" "$1" && grep -qx "ToggleFastForward = SDL-0/Back & SDL-0/LeftStick" "$1"' _ "$DS6"
+expect "DuckStation: menu on FN (Guide) and still on SELECT + X, in place" bash -c 'test "$(grep -n "^OpenPauseMenu" "$1" | tr "\n" "|")" = "7:OpenPauseMenu = SDL-0/Guide|8:OpenPauseMenu = SDL-0/Back & SDL-0/X|"' _ "$DS6"
+expect "DuckStation: reset, screenshot, rewind, widescreen, power off and the other sections kept" bash -c 'grep -qx "Reset = SDL-0/Back & SDL-0/B" "$1" && grep -qx "Screenshot = SDL-0/Back & SDL-0/A" "$1" && grep -qx "Rewind = SDL-0/Back & SDL-0/DPadLeft" "$1" && grep -qx "ToggleWidescreen = SDL-0/Back & SDL-0/Y" "$1" && grep -qx "PowerOff = SDL-0/Back & SDL-0/Start" "$1" && grep -qx "PauseOnMenu = true" "$1" && grep -qx "LogLevel = Info" "$1" && test "$(wc -l < "$1")" = 20' _ "$DS6"
+for p in "$R6/opt/ppsspp/backupforromsfolder/ppsspp" "$R6/roms/psp/ppsspp"; do
+expect "PPSSPP ${p#"$R6"}: combos for states, slots, speed, rewind, screenshot, reset, FN pause" bash -c 'grep -qx "Save State = 10-196:10-192" "$1" && grep -qx "Load State = 10-196:10-193" "$1" && grep -qx "Previous Slot = 10-196:10-4008" "$1" && grep -qx "Next Slot = 10-196:10-4010" "$1" && grep -qx "SpeedToggle = 1-68,10-196:10-106" "$1" && grep -qx "Rewind = 1-67,10-196:10-21" "$1" && grep -qx "Screenshot = 10-196:10-189" "$1" && grep -qx "Reset = 10-196:10-190" "$1" && grep -qx "Pause = 1-111,10-4" "$1" && grep -qx "Select = 10-196" "$1" && test "$(wc -l < "$1")" = 14 && test "$(head -c 3 "$1" | od -An -tx1 | tr -d " ")" = "efbbbf" && test "$(head -1 "$1" | tail -c +4)" = "[ControlMapping]" && test "$(grep -c "ControlMapping" "$1")" = 1' _ "$p/PSP/SYSTEM/controls.ini"
+done
+FC6="$R6/home/ark/.config/flycast/mappings/SDL_GO-Super Gamepad.cfg"
+expect "Flycast: FN = menu and L3 = fast-forward added inside [digital]" bash -c 'test "$(sed -n "/^\[digital\]/,/^\[emulator\]/p" "$1" | tr "\n" "|")" = "[digital]|bind0 = 0:btn_a|bind1 = 1:btn_b|bind10 = 10:btn_dpad1_left|bind11 = 11:btn_dpad1_right|bind12 = 12:btn_menu|bind13 = 13:btn_start|bind2 = 2:btn_y|bind3 = 3:btn_x|bind16 = 16:btn_menu|bind14 = 14:btn_fforward||[emulator]|"' _ "$FC6"
+DR6="$R6/opt/drastic/config/drastic.cfg"
+expect "DraStic: FN = menu, L3 = swap screens, keyboard lines untouched" bash -c 'grep -qx "controls_b\[CONTROL_INDEX_MENU\] = 1040" "$1" && grep -qx "controls_b\[CONTROL_INDEX_SWAP_SCREENS\] = 1038" "$1" && grep -qx "controls_a\[CONTROL_INDEX_MENU\] = 1038" "$1" && test "$(wc -l < "$1")" = 7' _ "$DR6"
+GC6="$R6/opt/inttools/gamecontrollerdb.txt"
+expect "gamecontrollerdb: FN declared as Guide on the GO-Super line, nothing else" bash -c 'grep -q "^190000004b4800000011000000010000,GO-Super Gamepad,x:b2,.*righty:a3,guide:b16,platform:Linux,$" "$1" && test "$(grep -c guide "$1")" = 1 && test "$(wc -l < "$1")" = 3' _ "$GC6"
+expect "ogage wrappers installed in /usr/local/sbin (755), calling upstream's scripts" bash -c 'test "$(stat -c %a "$1/toggle_wifi.sh")" = 755 && test "$(stat -c %a "$1/toggle_bt.sh")" = 755 && grep -q "^\[ -e /tmp/game-running \] && exit 0$" "$1/toggle_wifi.sh" && grep -q "^exec /usr/local/bin/toggle_bt.sh \"\$@\"$" "$1/toggle_bt.sh" && bash -n "$1/toggle_wifi.sh"' _ "$R6/usr/local/sbin"
+expect "--layout-status: universal"           test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --layout-status)" = "universal"
+expect "--layout-report: every file universal, retrorun missing (dArkOSen's own build)" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --layout-report | awk '$1 != "retrorun" {print $2}' | sort -u | tr '\n' ' ')" = "universal " -a "$(SHORTCUTS_ROOT="$R6" bash "$SC" --layout-report | awk '$1 == "retrorun" {print $2}')" = "missing"
+expect "--layout darkosen exits 0"            bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout darkosen | grep -q "applied to 10 file"' _ "$SC" "$R6"
+for f in home/ark/.config/retroarch/retroarch.cfg home/ark/.config/retroarch32/retroarch.cfg home/ark/.config/mupen64plus/mupen64plus.cfg \
+         home/ark/.local/share/duckstation/settings.ini opt/ppsspp/backupforromsfolder/ppsspp/PSP/SYSTEM/controls.ini roms/psp/ppsspp/PSP/SYSTEM/controls.ini \
+         "home/ark/.config/flycast/mappings/SDL_GO-Super Gamepad.cfg" opt/drastic/config/drastic.cfg opt/inttools/gamecontrollerdb.txt home/ark/.config/retrorun.cfg; do
+expect "back to dArkOSen's, byte for byte: $(basename "$f")" cmp -s "$R6/$f" "$RL/$f"
+done
+expect "ogage wrappers removed"               test ! -e "$R6/usr/local/sbin/toggle_wifi.sh" -a ! -e "$R6/usr/local/sbin/toggle_bt.sh"
+expect "--layout-status: darkosen"            test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --layout-status)" = "darkosen"
+expect "settings follow (reminder and delay kept)" test "$(tr '\n' ' ' < "$R6/home/ark/.config/shortcuts.conf")" = "REMINDER=0 DELAY=4 LAYOUT=darkosen "
+expect "pages follow: retroarch.darkosen.txt (the exported copy)" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --page retroarch)" = "$R6/roms/shortcuts/retroarch.darkosen.txt"
+rm -f "$R6/roms/shortcuts/retroarch.darkosen.txt"
+expect "pages follow: without it, your retroarch.txt wins over the built-in variant" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --page retroarch)" = "$R6/roms/shortcuts/retroarch.txt"
+rm -f "$R6/roms/shortcuts/retroarch.txt"
+expect "pages follow: the built-in variant when both are gone" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --page retroarch)" = "$R6/usr/share/dArkOSen-Extended/shortcuts/retroarch.darkosen.txt"
+rm -f "$R6/roms/shortcuts/n64.darkosen.txt"
+expect "pages follow: n64 edited by the user wins over the built-in variant" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --page n64)" = "$R6/roms/shortcuts/n64.txt"
+expect "pages follow: retrorun.darkosen.txt (the exported copy)" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --page retrorun)" = "$R6/roms/shortcuts/retrorun.darkosen.txt"
+sed -i 's/^input_reset_btn = .*/input_reset_btn = "5"/' "$RC6/retroarch32/retroarch.cfg"      # changed by hand in RetroArch
+expect "--layout-status: mixed after a manual change" test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --layout-status)" = "mixed"
+expect "--layout universal again exits 0"      env SHORTCUTS_ROOT="$R6" bash "$SC" --layout universal
+expect "--layout-status: universal again"      test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --layout-status)" = "universal"
+expect "pages follow: retroarch.txt"           test "$(SHORTCUTS_ROOT="$R6" bash "$SC" --page retroarch)" = "$R6/usr/share/dArkOSen-Extended/shortcuts/retroarch.txt"
+expect "unknown layout refused"                bash -c '! SHORTCUTS_ROOT="$2" bash "$1" --layout foo 2>/dev/null' _ "$SC" "$R6"
+RE="$T/layout-empty"; mkdir -p "$RE/home/ark/.config"; printf 'REMINDER=1\nDELAY=10\nLAYOUT=universal\n' > "$RE/home/ark/.config/shortcuts.conf"
+expect "no configuration file at all: nothing applied, exits 0" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout darkosen | grep -q "not applied"' _ "$SC" "$RE"
+expect "--layout-status: missing"              test "$(SHORTCUTS_ROOT="$RE" bash "$SC" --layout-status)" = "missing"
+expect "settings unchanged then"               grep -qx 'LAYOUT=universal' "$RE/home/ark/.config/shortcuts.conf"
+RX="$T/layout-x"; make_root "$RX"; ppsspp_roms "$RX"
+expect "a key missing from a file is added, once" bash -c 'sed -i "/^input_pause_toggle_btn/d" "$2/home/ark/.config/retroarch/retroarch.cfg" && sed -i "/^Pause = /d" "$2/roms/psp/ppsspp/PSP/SYSTEM/controls.ini" && SHORTCUTS_ROOT="$2" bash "$1" --layout universal >/dev/null && test "$(grep -c "^input_pause_toggle_btn = \"3\"" "$2/home/ark/.config/retroarch/retroarch.cfg")" = 1 && test "$(grep -c "^Pause = 1-111,10-4" "$2/roms/psp/ppsspp/PSP/SYSTEM/controls.ini")" = 1' _ "$SC" "$RX"
+# --repair (self-repair service, at boot): files put back to dArkOSen's exact values by an
+# update or a first boot get the universal layout again; files changed by hand are left alone
+RM="$T/layout-m"; make_root "$RM"; ppsspp_roms "$RM"
+expect "fresh root, layout darkosen: --repair changes nothing" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --repair >/dev/null && test "$(SHORTCUTS_ROOT="$2" bash "$1" --layout-status)" = darkosen' _ "$SC" "$RM"
+env SHORTCUTS_ROOT="$RM" bash "$SC" --layout universal >/dev/null
+cp "$RL/roms/psp/ppsspp/PSP/SYSTEM/controls.ini" "$RM/roms/psp/ppsspp/PSP/SYSTEM/controls.ini"       # the first boot extracted the user's old copy
+cp "$RL/opt/inttools/gamecontrollerdb.txt" "$RM/opt/inttools/gamecontrollerdb.txt"                       # an OTA update replaced the database
+sed -i 's/^input_reset_btn = .*/input_reset_btn = "5"/' "$RM/home/ark/.config/retroarch32/retroarch.cfg"   # changed by hand in RetroArch
+expect "--repair re-applies the layout to the two pristine files" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --repair | grep -q "re-applied to 2 file"' _ "$SC" "$RM"
+expect "PPSSPP copy next to the roms: universal again" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout-report | grep -q "^ppsspp-roms  universal"' _ "$SC" "$RM"
+expect "controller database: universal again"  bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout-report | grep -q "^gcdb         universal"' _ "$SC" "$RM"
+expect "the hand-changed retroarch32 file is left alone (mixed)" bash -c 'grep -qx "input_reset_btn = \"5\"" "$2/home/ark/.config/retroarch32/retroarch.cfg" && SHORTCUTS_ROOT="$2" bash "$1" --layout-report | grep -q "^ra32         mixed"' _ "$SC" "$RM"
+expect "a second --repair changes nothing"     bash -c '! SHORTCUTS_ROOT="$2" bash "$1" --repair | grep -q "re-applied"' _ "$SC" "$RM"
+# retrorun: dArkOSen's own build ignores retrorun_hotkey_*; the hotkeys build (components/retrorun_hotkeys,
+# installed by its device-install.sh) is recognised by that string, then the layout and the page follow
+RR="$T/layout-rr"; make_root "$RR"; RRC="$RR/home/ark/.config/retrorun.cfg"; RRT="$RR/usr/share/dArkOSen-Extended/shortcuts"
+mkdir -p "$RRT"; cp "$STX"/*.txt "$RRT/"
+expect "dArkOSen's retrorun: component missing, nothing written, dArkOSen's page even in the universal layout" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout universal | grep -q "retrorun: hotkeys build not installed, skipped" && SHORTCUTS_ROOT="$2" bash "$1" --layout-report | grep -q "^retrorun     missing" && cmp -s "$3" "$4" && test "$(SHORTCUTS_ROOT="$2" bash "$1" --page retrorun)" = "$5/retrorun.darkosen.txt"' _ "$SC" "$RR" "$RRC" "$RL/home/ark/.config/retrorun.cfg" "$RRT"
+printf 'stub\nretrorun_hotkey_menu\n' > "$RR/usr/local/bin/retrorun"; cp "$RR/usr/local/bin/retrorun" "$RR/usr/local/bin/retrorun32"
+expect "hotkeys build installed: --repair appends the four lines (FN menu, R2/L2 slots, L3 fast-forward)" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --repair | grep -q "re-applied to 1 file" && test "$(grep "^retrorun_hotkey" "$3" | tr "\n" "|")" = "retrorun_hotkey_menu = F5|retrorun_hotkey_slot_next = TriggerRight|retrorun_hotkey_slot_prev = TriggerLeft|retrorun_hotkey_fast_forward = F3|" && test "$(head -6 "$3")" = "$(head -6 "$4")" && test "$(wc -l < "$3")" = 10' _ "$SC" "$RR" "$RRC" "$RL/home/ark/.config/retrorun.cfg"
+expect "--layout-report: retrorun universal, page = the universal keys" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout-report | grep -q "^retrorun     universal" && test "$(SHORTCUTS_ROOT="$2" bash "$1" --page retrorun)" = "$3/retrorun.txt"' _ "$SC" "$RR" "$RRT"
+expect "--layout darkosen: 10 files (no PPSSPP copy next to the roms here), retrorun.cfg back byte for byte" bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout darkosen | grep -q "applied to 10 file" && cmp -s "$3" "$4"' _ "$SC" "$RR" "$RRC" "$RL/home/ark/.config/retrorun.cfg"
+expect "--layout universal: 10 files, lines back"  bash -c 'SHORTCUTS_ROOT="$2" bash "$1" --layout universal | grep -q "applied to 10 file" && test "$(grep -c "^retrorun_hotkey" "$3")" = 4' _ "$SC" "$RR" "$RRC"
+# inject.sh --retrorun-hotkeys (local builds): the binaries go in at build time, the layout step then writes the lines
+RI="$T/inject-rr"; make_root "$RI"; RIB="$T/rrbin"; mkdir -p "$RIB" "$RIB-bad"
+printf 'hotkeys retrorun\nretrorun_hotkey_menu\n' > "$RIB/retrorun"; printf 'hotkeys retrorun32\nretrorun_hotkey_menu\n' > "$RIB/retrorun32"
+printf 'stock\n' > "$RIB-bad/retrorun"; cp "$RIB/retrorun32" "$RIB-bad/"
+chown 1000:1000 "$RI/usr/local/bin/retrorun" "$RI/usr/local/bin/retrorun32" 2>/dev/null || true
+expect "inject.sh refuses a binary without the hotkeys string" bash -c '! bash "$1" "$2" "" 10152026 "" "$3" >/dev/null 2>&1' _ "$INJECT" "$RI" "$RIB-bad"
+expect "inject.sh with the hotkeys build exits 0"  bash "$INJECT" "$RI" "" 10152026 "" "$RIB"
+expect "binaries installed (755, owner kept), dArkOSen's kept as .darkosen" bash -c 'grep -q retrorun_hotkey_menu "$1/retrorun" && grep -q retrorun_hotkey_menu "$1/retrorun32" && test "$(stat -c %a "$1/retrorun")" = 755 && test "$(stat -c %u "$1/retrorun")" = "$(stat -c %u "$1/retrorun.darkosen")" && grep -q "stock retrorun 3.0.0" "$1/retrorun.darkosen" && grep -q "stock retrorun32" "$1/retrorun32.darkosen"' _ "$RI/usr/local/bin"
+expect "default config path linked to retrorun.cfg" test "$(readlink "$RI/storage/.config/distribution/configs/retrorun.cfg")" = "/home/ark/.config/retrorun.cfg"
+expect "retrorun.cfg got the four lines, layout universal everywhere (no PPSSPP copy next to the roms)" bash -c 'test "$(grep -c "^retrorun_hotkey" "$2/home/ark/.config/retrorun.cfg")" = 4 && SHORTCUTS_ROOT="$2" bash "$1" --layout-report | grep -q "^retrorun     universal" && test "$(SHORTCUTS_ROOT="$2" bash "$1" --layout-status)" = universal' _ "$SC" "$RI"
+expect "build stamp counts the binaries"       grep -qx 'DARKOSEN_EXTENDED_RETRORUN_HOTKEYS=2' "$RI/etc/dArkOSen-Extended.release"
+expect "a second inject keeps the .darkosen copies" bash -c 'bash "$1" "$2" "" 10152026 "" "$3" >/dev/null && grep -q "stock retrorun 3.0.0" "$2/usr/local/bin/retrorun.darkosen"' _ "$INJECT" "$RI" "$RIB"
+expect "without the option nothing of this happens" bash -c '! test -e "$1/storage" && grep -qx "DARKOSEN_EXTENDED_RETRORUN_HOTKEYS=0" "$1/etc/dArkOSen-Extended.release"' _ "$R6"
 # which page for which launch (the command line EmulationStation runs is given instead of read from /proc)
 SD="$T/sc"; mkdir -p "$SD/user" "$SD/bin" "$SD/real"
 echo 'echo "VAR=PPSSPPSDL" > /home/ark/.config/KILLIT' > "$SD/bin/ppsspp.sh"; echo ': no exit daemon' > "$SD/bin/n64.sh"
-W() { LAUNCH_CMD="$1" SHORTCUTS_DIRS="$SD/user $STX" SHORTCUTS_BIN="$SD/bin" SHORTCUTS_CONF="$SD/none.conf" bash "$LR" --which | sed 's/.* -> //; s|.*/||'; }
+echo 'echo "VAR=scummvm" > /home/ark/.config/KILLIT' > "$SD/bin/scummvm.sh"
+printf 'REMINDER=1\nDELAY=0\nLAYOUT=universal\n' > "$SD/uni.conf"       # as on a built image
+W() { LAUNCH_CMD="$1" SHORTCUTS_DIRS="$SD/user $STX" SHORTCUTS_BIN="$SD/bin" SHORTCUTS_CONF="$SD/uni.conf" bash "$LR" --which | sed 's/.* -> //; s|.*/||'; }
 expect "RetroArch launched directly"          test "$(W 'sudo perfmax ondemand /roms/snes/a.sfc; nice -n -19 /usr/local/bin/retroarch -L /home/ark/.config/retroarch/cores/snes9x_libretro.so /roms/snes/a.sfc; sudo perfnorm')" = "retroarch.txt"
 expect "retroarch32 through n64.sh"           test "$(W 'sudo perfmax ondemand /roms/n64/a.n64; nice -n -19 /usr/local/bin/n64.sh retroarch32 parallel_n64 /roms/n64/a.n64; sudo perfnorm')" = "retroarch.txt"
+DC_CMD='sudo perfmax ondemand /roms/dreamcast/a.cdi; nice -n -19 /usr/local/bin/dreamcast.sh retrorun32 flycast32_rumble /roms/dreamcast/a.cdi; sudo perfnorm'
+expect "retrorun32 through dreamcast.sh, dArkOSen's build: its own keys even in the universal layout" test "$(W "$DC_CMD")" = "retrorun.darkosen.txt"
+printf 'stub\nretrorun_hotkey_menu\n' > "$SD/bin/retrorun32"
+expect "retrorun32, the hotkeys build installed: the universal page" test "$(W "$DC_CMD")" = "retrorun.txt"
 expect "standalone-Rice through n64.sh"       test "$(W 'sudo perfmax ondemand /roms/n64/a.n64; nice -n -19 /usr/local/bin/n64.sh standalone-Rice Default_Aspect /roms/n64/a.n64; sudo perfnorm')" = "n64.txt"
 expect "rom name with spaces and brackets"    test "$(W 'sudo perfmax ondemand /roms/n64/Super\ Mario\ 64\ \(Europe\).n64; nice -n -19 /usr/local/bin/n64.sh standalone-Glide64mk2 Default_Aspect /roms/n64/Super\ Mario\ 64\ \(Europe\).n64; sudo perfnorm')" = "n64.txt"
 expect "retrorun32 through dreamcast.sh"      test "$(W 'sudo perfmax ondemand /roms/dreamcast/a.chd; nice -n -19 /usr/local/bin/dreamcast.sh retrorun32 flycast /roms/dreamcast/a.chd; sudo perfnorm')" = "retrorun.txt"
-expect "PPSSPP standalone (exit daemon)"      test "$(W 'sudo perfmax ondemand /roms/psp/a.iso; nice -n -19 /usr/local/bin/ppsspp.sh standalone /roms/psp/a.iso; sudo perfnorm')" = "standalone.txt"
+expect "PPSSPP standalone: its own page"      test "$(W 'sudo perfmax ondemand /roms/psp/a.iso; nice -n -19 /usr/local/bin/ppsspp.sh standalone /roms/psp/a.iso; sudo perfnorm')" = "ppsspp.txt"
+expect "PPSSPP 2021: the page of that build"  test "$(W 'sudo perfmax ondemand /roms/psp/a.iso; nice -n -19 /usr/local/bin/ppsspp.sh standalone-2021 /roms/psp/a.iso; sudo perfnorm')" = "ppsspp.standalone-2021.txt"
+expect "ScummVM standalone (exit daemon): generic page" test "$(W 'sudo perfmax ondemand /roms/scummvm/a.svm; nice -n -19 /usr/local/bin/scummvm.sh /roms/scummvm/a.svm; sudo perfnorm')" = "standalone.txt"
+expect "Flycast standalone through dreamcast.sh" test "$(W 'sudo perfmax ondemand /roms/dreamcast/a.chd; nice -n -19 /usr/local/bin/dreamcast.sh standalone-Flycast /roms/dreamcast/a.chd; sudo perfnorm')" = "dreamcast.standalone-Flycast.txt"
+expect "DraStic through drastic.sh"           test "$(W 'sudo perfmax ondemand /roms/nds/a.nds; nice -n -19 /usr/local/bin/drastic.sh drastic /roms/nds/a.nds; sudo perfnorm')" = "drastic.drastic.txt"
+expect "Yabasanshiro through saturn.sh"       test "$(W 'sudo perfmax ondemand /roms/saturn/a.chd; nice -n -19 /usr/local/bin/saturn.sh yabasanshiro-pirry-nobios x /roms/saturn/a.chd; sudo perfnorm')" = "saturn.txt"
 expect "a port: no page, no reminder"         test "$(W 'sudo perfmax ondemand /roms/ports/Game.sh; /roms/ports/Game.sh; sudo perfnorm')" = "none"
 printf 'MY RICE PAGE\n' > "$SD/user/n64.standalone-Rice.txt"
 expect "your own page for one emulator wins"  test "$(W 'sudo perfmax ondemand /roms/n64/a.n64; nice -n -19 /usr/local/bin/n64.sh standalone-Rice Default_Aspect /roms/n64/a.n64; sudo perfnorm')" = "n64.standalone-Rice.txt"
 # the real thing: no hint, the helper finds the launching shell among its ancestors
 printf '#!/bin/bash\nSHORTCUTS_DIRS="%s" SHORTCUTS_BIN="%s" SHORTCUTS_CONF=/nonexistent bash "%s" --which\n' "$STX" "$SD/bin" "$LR" > "$SD/real/perfmax"
 printf '#!/bin/bash\nexit 0\n' > "$SD/real/n64.sh"; chmod 755 "$SD/real/perfmax" "$SD/real/n64.sh"
-expect "emulator read from the launching shell" bash -c 'test "$(sh -c "$1/perfmax ondemand /roms/n64/a.n64; nice -n -19 $1/n64.sh standalone-Rice Default_Aspect /roms/n64/a.n64; true" | sed "s/.* -> //; s|.*/||")" = "n64.txt"' _ "$SD/real"
+expect "emulator read from the launching shell (no settings file: dArkOSen's page)" bash -c 'test "$(sh -c "$1/perfmax ondemand /roms/n64/a.n64; nice -n -19 $1/n64.sh standalone-Rice Default_Aspect /roms/n64/a.n64; true" | sed "s/.* -> //; s|.*/||")" = "n64.darkosen.txt"' _ "$SD/real"
 # what gets printed (stdin is not a terminal there either: over SSH, on a pts, the helper stays quiet)
 RA_CMD='sudo perfmax ondemand /roms/snes/a.sfc; nice -n -19 /usr/local/bin/retroarch -L x /roms/snes/a.sfc; sudo perfnorm'
 printf 'REMINDER=1\nDELAY=0\n' > "$SD/on.conf"; printf 'REMINDER=0\nDELAY=0\n' > "$SD/off.conf"; : > "$SD/tty"
 expect "reminder printed on the console"      bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "RETROARCH" "$5" && grep -q "START ........ quit the game" "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/on.conf" "$SD/tty"
 expect "notes (# lines) are not printed"      bash -c '! grep -q "retroarch.cfg" "$1"' _ "$SD/tty"
+expect "no LAYOUT in the settings: dArkOSen's page (its files are untouched)" grep -q "dArkOSen keys" "$SD/tty"
+expect "A, B, X, Y in the colours of the R36S" bash -c 'grep -q "$(printf " \033\[1;33mB\033\[0m / \033\[1;31mA\033\[0m ........ save / load state")" "$1" && grep -q "$(printf " \033\[1;34mX\033\[0m / \033\[1;32mY\033\[0m ........ next / previous slot")" "$1" && grep -q " R2 / L3 ...... reset / screenshot" "$1"' _ "$SD/tty"
+expect "UP, DOWN, LEFT, RIGHT as arrows, columns kept" bash -c 'grep -q "$(printf " \342\206\221  ........... frame advance")" "$1" && grep -q "$(printf " \342\206\223    ......... fast-forward (hold)")" "$1" && grep -q "$(printf " \342\206\220    ......... rewind")" "$1" && grep -q "$(printf " \342\206\222     ........ fast-forward on/off")" "$1"' _ "$SD/tty"
+expect "the title keeps its own colour, no word changed inside" bash -c 'grep -q "$(printf "\033\[1;33mRETROARCH (dArkOSen keys)\033\[0m")" "$1" && grep -q "Menu: FN, or hold SELECT 2 seconds" "$1"' _ "$SD/tty"
+: > "$SD/tty"
+expect "universal layout: the universal page"  bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "$(printf "\033\[1;33mRETROARCH\033\[0m")" "$5" && ! grep -q "dArkOSen keys" "$5" && grep -q "FN ............ menu" "$5" && grep -q " R1 / L1 ...... save / load state" "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/uni.conf" "$SD/tty"
+printf 'A TITLE\nA/B/X/Y and A/B, SELECT + A.\nGAME over, X-Y, UPDOWN, no UP.\n' > "$SD/user/n64.txt"
+expect "--which: the .darkosen variant only in that layout" bash -c 'test "$(LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" bash "$1" --which | sed "s/.* -> //; s|.*/||")" = "retroarch.darkosen.txt" && test "$(LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$5" bash "$1" --which | sed "s/.* -> //; s|.*/||")" = "retroarch.txt"' _ "$LR" "$RA_CMD" "$STX" "$SD/on.conf" "$SD/uni.conf"
+: > "$SD/tty"
+expect "whole words only: A/B/X/Y all coloured, GAME, X-Y, UPDOWN untouched" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "$(printf " \033\[1;31mA\033\[0m/\033\[1;33mB\033\[0m/\033\[1;34mX\033\[0m/\033\[1;32mY\033\[0m and \033\[1;31mA\033\[0m/\033\[1;33mB\033\[0m, SELECT + \033\[1;31mA\033\[0m.")" "$5" && grep -q "$(printf " GAME over, \033\[1;34mX\033\[0m-\033\[1;32mY\033\[0m, UPDOWN, no \342\206\221 .")" "$5"' _ "$LR" 'sudo perfmax ondemand /roms/n64/a.n64; nice -n -19 /usr/local/bin/n64.sh standalone-Glide64mk2 Default_Aspect /roms/n64/a.n64; sudo perfnorm' "$SD/user $STX" "$SD/on.conf" "$SD/tty"
+rm -f "$SD/user/n64.txt"
 printf '\xef\xbb\xbfMY TITLE\r\n# note\r\nSELECT + B ... quit\r\n' > "$SD/user/retroarch.txt"; : > "$SD/tty"   # saved by Windows Notepad
-expect "a page edited on Windows prints cleanly" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "MY TITLE" "$5" && grep -q "SELECT + B ... quit" "$5" && ! grep -q "note" "$5" && ! grep -q "$(printf "\r")" "$5" && ! grep -q "$(printf "\357\273\277")" "$5"' _ "$LR" "$RA_CMD" "$SD/user $STX" "$SD/on.conf" "$SD/tty"
+expect "a page edited on Windows prints cleanly" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q "MY TITLE" "$5" && grep -q "$(printf "SELECT + \033\[1;33mB\033\[0m ... quit")" "$5" && ! grep -q "note" "$5" && ! grep -q "$(printf "\r")" "$5" && ! grep -q "$(printf "\357\273\277")" "$5"' _ "$LR" "$RA_CMD" "$SD/user $STX" "$SD/on.conf" "$SD/tty"
 : > "$SD/tty"
 expect "nothing printed when the reminder is off" bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && test ! -s "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/off.conf" "$SD/tty"
 : > "$SD/tty"
 expect "no prompt when the time is 0"         bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" bash "$1" < /dev/null && grep -q RETROARCH "$5" && ! grep -q "Press A" "$5"' _ "$LR" "$RA_CMD" "$STX" "$SD/on.conf" "$SD/tty"
-expect "10 s by default"                      grep -qx 'REMINDER=1; DELAY=10' "$LR"
+expect "10 s and dArkOSen's pages by default"  grep -qx 'REMINDER=1; DELAY=10; LAYOUT=darkosen' "$LR"
 printf 'REMINDER=1\nDELAY=1\n' > "$SD/wait.conf"; mkdir -p "$SD/long"; : > "$SD/tty"
 { echo "LONG PAGE"; for i in $(seq 1 20); do echo "line $i"; done; } > "$SD/long/retroarch.txt"
 t0=$(date +%s%N)
-expect "the prompt is printed when it waits"  bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" SHORTCUTS_PYTHON=/nonexistent/python3 bash "$1" < /dev/null && grep -q "Press A to continue" "$5"' _ "$LR" "$RA_CMD" "$SD/long" "$SD/wait.conf" "$SD/tty"
+expect "the prompt is printed when it waits"  bash -c 'LAUNCH_CMD="$2" SHORTCUTS_DIRS="$3" SHORTCUTS_CONF="$4" SHORTCUTS_TTY="$5" SHORTCUTS_PYTHON=/nonexistent/python3 bash "$1" < /dev/null && grep -q "$(printf "Press \033\[1;31mA\033\[1;36m to continue")" "$5"' _ "$LR" "$RA_CMD" "$SD/long" "$SD/wait.conf" "$SD/tty"
 expect "without python it waits the whole time" test $(( ($(date +%s%N) - t0) / 1000000 )) -ge 1000
 expect "the title and 11 lines, then the prompt" bash -c 'grep -q "line 11" "$1" && ! grep -q "line 12" "$1"' _ "$SD/tty"
 if command -v python3 >/dev/null; then       # no game pad here: the button wait must fall back to the full time

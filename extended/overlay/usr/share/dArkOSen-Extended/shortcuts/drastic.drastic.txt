@@ -1,0 +1,8 @@
+DRASTIC
+# Universal hotkey layout: controls_b lines in /opt/drastic/config/drastic.cfg (single
+# buttons only, the states are in the menu). Advanced DraStic has its own files and is not
+# changed: it gets the generic standalone page.
+FN ............ menu (states inside)
+L3 ............ swap screens
+L2 / R2 ....... screen layout
+SELECT + START  quit the game

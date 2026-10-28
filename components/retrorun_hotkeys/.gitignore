@@ -1,0 +1,3 @@
+# Build outputs (binaries, logs) stay local; the source lives in the GazousGit/retrorun fork.
+/out/
+*.log

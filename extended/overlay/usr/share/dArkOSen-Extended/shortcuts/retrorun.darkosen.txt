@@ -1,0 +1,17 @@
+RETRORUN (dArkOSen keys)
+# dArkOSen's retrorun.cfg sets retrorun_alternative_input_mode = true (the ArkOS mode); the
+# combinations come from src/input.cpp of navy1978/retrorun 3.0.0, the build dArkOSen ships,
+# and are compiled in. The R36S is seen as an "RG351MP": SELECT = F1, START = F2, L3 / R3 =
+# F3 / F4, FN = F5 (unused). retrorun_swap_l1r1_with_l2r2 only swaps the game's buttons, not
+# these. No fast-forward key exists in this mode. Saturn through retrorun runs without the
+# config file (AmberELEC mode): menu = L3 + R3 only, SELECT + R2 fast-forward.
+L3 + R3 ....... menu (settings)
+Hold SELECT and press:
+ X ............ menu (settings)
+ START ........ quit the game
+ R1 / L1 ...... save / load state
+ UP / DOWN .... next / previous slot
+ A ............ pause on/off
+ Y ............ show the FPS
+ B ............ screenshot
+(no fast-forward key in this mode)

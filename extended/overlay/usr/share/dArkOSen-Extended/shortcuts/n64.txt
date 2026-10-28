@@ -1,8 +1,13 @@
 N64 STANDALONE (MUPEN64PLUS)
 # Rice, Glide64mk2 and GlideN64 are the same emulator with another video plugin.
-# From [CoreEvents] in /home/ark/.config/mupen64plus/mupen64plus.cfg as shipped by dArkOSen.
+# Universal hotkey layout: [CoreEvents] in /home/ark/.config/mupen64plus/mupen64plus.cfg.
+# This emulator has no menu (its settings are in EmulationStation) and no "previous slot".
+No menu here: settings are in ES.
 Hold SELECT and press:
  START ........ quit the game
- R2 / L2 ...... save / load state
- A ............ pause
- X ............ reset
+ R1 / L1 ...... save / load state
+ R2 ........... next slot
+ L3 ........... fast-forward (hold)
+ B ............ reset
+ A ............ screenshot
+ Y ............ pause on/off
