@@ -215,15 +215,22 @@ fi
 # EmulationStation settings for local builds (optional): ROMS_DIR/es_settings.cfg holds
 # lines in ES's own format, e.g. <string name="GamelistViewStyle" value="video" />.
 # Each one replaces the image's line of the same name or is added; anything else is ignored.
-NES=0
+# Two names do what ES's own menu does instead of going into the file: system.timezone links
+# /etc/localtime and is kept in ~/.emulationstation.conf (where ES reads it), and InvertButtons
+# true / false runs dArkOSen's global A/B swap (b_swap.sh: US / JP) if the image is the other way.
+NES=0; TZ_WANT=""; AB_WANT=""
 if [ -n "$ROMSDIR" ] && [ -f "$ROMSDIR/es_settings.cfg" ]; then
     [ -f "$ESSET" ] || { echo "inject: ${ESSET#"$ROOT"} not found, cannot apply es_settings.cfg" >&2; exit 1; }
     tmp="$ESSET.tmp"; cp "$ESSET" "$tmp"
-    re='^[[:space:]]*(<(bool|int|float|string)[[:space:]]+name="([^"]+)"[[:space:]]+value="[^"]*"[[:space:]]*/>)[[:space:]]*$'
+    re='^[[:space:]]*(<(bool|int|float|string)[[:space:]]+name="([^"]+)"[[:space:]]+value="([^"]*)"[[:space:]]*/>)[[:space:]]*$'
     while IFS= read -r line || [ -n "$line" ]; do
         line=${line%$'\r'}; line=${line#$'\xef\xbb\xbf'}         # files saved by Windows editors
         [[ "$line" =~ $re ]] || continue
-        entry=${BASH_REMATCH[1]}; name=${BASH_REMATCH[3]}
+        entry=${BASH_REMATCH[1]}; name=${BASH_REMATCH[3]}; value=${BASH_REMATCH[4]}
+        case "$name" in
+            system.timezone) TZ_WANT=$value; NES=$((NES + 1)); continue ;;
+            InvertButtons)   AB_WANT=$value; NES=$((NES + 1)); continue ;;
+        esac
         grep -vF "name=\"$name\" " "$tmp" > "$tmp.2" || :
         mv "$tmp.2" "$tmp"
         [ -z "$(tail -c1 "$tmp")" ] || echo >> "$tmp"
@@ -236,6 +243,70 @@ if [ -n "$ROMSDIR" ] && [ -f "$ROMSDIR/es_settings.cfg" ]; then
     done < "$ROMSDIR/es_settings.cfg"
     cat "$tmp" > "$ESSET"; rm -f "$tmp"                          # keeps the file's owner (ark)
     echo "inject: es_settings.cfg -> $NES setting(s) in ${ESSET#"$ROOT"}"
+fi
+if [ -n "$TZ_WANT" ]; then
+    [[ "$TZ_WANT" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ ]] && [ -f "$ROOT/usr/share/zoneinfo/$TZ_WANT" ] \
+        || { echo "inject: time zone '$TZ_WANT' not found in the image's /usr/share/zoneinfo" >&2; exit 1; }
+    ln -sfn "/usr/share/zoneinfo/$TZ_WANT" "$ROOT/etc/localtime"
+    ESCONF="$ROOT/home/ark/.emulationstation.conf"
+    [ -f "$ESCONF" ] || { : > "$ESCONF"; chown --reference="$ROOT/home/ark" "$ESCONF"; }
+    grep -v '^system\.timezone=' "$ESCONF" > "$ESCONF.tmp" || :
+    echo "system.timezone=$TZ_WANT" >> "$ESCONF.tmp"
+    cat "$ESCONF.tmp" > "$ESCONF"; rm -f "$ESCONF.tmp"
+    echo "inject: time zone -> $TZ_WANT (/etc/localtime, ${ESCONF#"$ROOT"})"
+fi
+if [ -n "$AB_WANT" ]; then
+    case "$AB_WANT" in
+        true)  want=US ;;
+        false) want=JP ;;
+        *)     echo "inject: InvertButtons must be true (US) or false (JP), not '$AB_WANT'" >&2; exit 1 ;;
+    esac
+    have=JP; [ -f "$ROOT/var/cache/Switch_AB" ] && have=US          # b_swap.sh's own flag
+    if [ "$have" = "$want" ]; then
+        echo "inject: A/B buttons -> already $want"
+    else
+        SWAP="$ROOT/usr/local/bin/b_swap.sh"
+        [ -f "$SWAP" ] || { echo "inject: ${SWAP#"$ROOT"} not found, cannot switch the A/B buttons" >&2; exit 1; }
+        # dArkOSen's own script, its file paths (all set at its top) moved under ROOT. A path through
+        # a symbolic link could lead out of the image, so none may cross one.
+        mapfile -t swpaths < <(sed -nE 's#^[A-Z0-9_]+="(/[^"]*)".*#\1#p' "$SWAP")
+        for p in "${swpaths[@]}"; do
+            cur=""; IFS=/ read -ra segs <<<"${p#/}"
+            for s in "${segs[@]}"; do
+                cur="$cur/$s"
+                [ -L "$ROOT$cur" ] && { echo "inject: $cur in the image is a symbolic link, A/B buttons not switched" >&2; exit 1; }
+            done
+        done
+        # /opt/system/Tools is /roms/tools bind-mounted on the device: PortMaster's and ThemeMaster's
+        # files come from roms.tar at the first boot, so the script edits copies taken out of it
+        stage=$(mktemp -d); staged=()
+        for p in "${swpaths[@]}"; do
+            m="roms/tools/${p#/opt/system/Tools/}"
+            [[ "$p" == /opt/system/Tools/* ]] && [ -f "$ROMSTAR" ] && tar -xf "$ROMSTAR" -C "$stage" "$m" 2>/dev/null || continue
+            cp -p "$stage/$m" "$stage/$m.orig"; staged+=("$m")
+        done
+        sw=$(mktemp)
+        sed -E -e "s#^([A-Z0-9_]+)=\"/opt/system/Tools/#\\1=\"$stage/roms/tools/#" -e t \
+               -e "s#^([A-Z0-9_]+)=\"/#\\1=\"$ROOT/#" "$SWAP" > "$sw"
+        if [ ${#swpaths[@]} -eq 0 ] || [ "$(grep -cE "^[A-Z0-9_]+=\"($ROOT|$stage)/" "$sw")" -ne ${#swpaths[@]} ]; then
+            rm -rf "$sw" "$stage"; echo "inject: ${SWAP#"$ROOT"} does not set its paths the expected way, A/B buttons not switched" >&2; exit 1
+        fi
+        bash "$sw" || :                                            # a file the image lacks only gets sed's message
+        rm -f "$sw"
+        have=JP; [ -f "$ROOT/var/cache/Switch_AB" ] && have=US
+        [ "$have" = "$want" ] || { rm -rf "$stage"; echo "inject: A/B buttons still $have after b_swap.sh" >&2; exit 1; }
+        ntools=0
+        for m in "${staged[@]}"; do                                 # changed copies replace their roms.tar entry
+            cmp -s "$stage/$m" "$stage/$m.orig" && continue
+            nbefore=$(tar -tf "$ROMSTAR" | wc -l)
+            tar --delete -f "$ROMSTAR" "$m"
+            tar -rf "$ROMSTAR" -C "$stage" --owner=0 --group=0 --mode='u=rwX,go=rX' "$m"
+            [ "$(tar -tf "$ROMSTAR" | wc -l)" -eq "$nbefore" ] || { echo "inject: roms.tar entry count changed while replacing $m" >&2; exit 1; }
+            ntools=$((ntools + 1))
+        done
+        rm -rf "$stage"
+        echo "inject: A/B buttons -> $want (dArkOSen's b_swap.sh; $ntools file(s) of /roms/tools switched in roms.tar)"
+    fi
 fi
 
 echo "inject: installing Boot Video Manager into $ROOT"

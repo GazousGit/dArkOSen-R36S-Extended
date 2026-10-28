@@ -477,6 +477,81 @@ RT2="$T/roottheme2"; make_root "$RT2"; cp "$T/roms.tar.orig" "$RT2/roms.tar"    
 bash "$INJECT" "$RT2" "" 09302026 "$PT" >/dev/null 2>&1
 expect "no /tempthemes: themes go into roms.tar" bash -c 'tar -tf "$1" | grep -qx roms/themes/es-theme-nes-box/theme.xml' _ "$RT2/roms.tar"
 
+echo "== time zone and A/B buttons from es_settings.cfg (what ES's menu does)"
+RZ="$T/roottz"; make_root "$RZ"; cp "$T/roms.tar.orig" "$RZ/roms.tar"
+mkdir -p "$RZ/usr/share/zoneinfo/Europe" "$RZ/usr/share/zoneinfo/America" "$RZ/var/cache"
+echo paris > "$RZ/usr/share/zoneinfo/Europe/Paris"; echo regina > "$RZ/usr/share/zoneinfo/America/Regina"
+ln -s /usr/share/zoneinfo/America/Regina "$RZ/etc/localtime"
+printf 'kodi.enabled=1\nsystem.timezone=America/Regina\n' > "$RZ/home/ark/.emulationstation.conf"
+# the image ships the US layout: b_swap.sh's flag is there and keys.gptk has a = esc
+touch "$RZ/var/cache/Switch_AB"; printf 'a = esc\nb = enter\nx = x\n' > "$RZ/opt/inttools/keys.gptk"
+cat > "$RZ/usr/local/bin/b_swap.sh" <<'EOF'
+#!/bin/bash
+# reduced dArkOSen b_swap.sh: same layout (paths set at the top, flag = US)
+if [ "$(id -u)" -ne 0 ]; then
+    exec sudo -- "$0" "$@"
+fi
+
+AB_FLAG="/var/cache/Switch_AB"
+KEYS="/opt/inttools/keys.gptk"
+KODI="/home/ark/.kodi/not-in-this-image.xml"
+PM="/opt/system/Tools/PortMaster/gamecontrollerdb.txt"
+ES="/home/ark/.emulationstation/es_settings.cfg"
+
+if [[ -f "$AB_FLAG" ]]; then
+	sed -i -e 's/^a = .*/a = enter/' -e 's/^b = .*/b = esc/' "$KEYS"
+	[[ -f "$PM" ]] && sed -i '/^190000004b4800000011000000010000,/ s/a:b0,b:b1/a:b1,b:b0/' "$PM"
+	sed -i '/bool name="InvertButtons"/d' "$ES"
+	sed -i 's/a/b/' "$KODI"
+	rm -f "$AB_FLAG"
+else
+	sed -i -e 's/^b = .*/b = enter/' -e 's/^a = .*/a = esc/' "$KEYS"
+	[[ -f "$PM" ]] && sed -i '/^190000004b4800000011000000010000,/ s/a:b1,b:b0/a:b0,b:b1/' "$PM"
+	sed -i '1a <bool name="InvertButtons" value="true" />' "$ES"
+	sed -i 's/a/b/' "$KODI"
+	touch "$AB_FLAG"
+fi
+EOF
+chmod 755 "$RZ/usr/local/bin/b_swap.sh"; cp "$RZ/usr/local/bin/b_swap.sh" "$T/b_swap.orig"
+# PortMaster's file reaches /opt/system/Tools (= /roms/tools bind-mounted) only through roms.tar
+mkdir -p "$T/pmsrc/roms/tools/PortMaster" "$RZ/opt/system/Tools"
+printf '190000004b4800000011000000010000,GO-Super Gamepad,a:b0,b:b1,x:b2,platform:Linux,\n' > "$T/pmsrc/roms/tools/PortMaster/gamecontrollerdb.txt"
+tar -rf "$RZ/roms.tar" -C "$T/pmsrc" roms/tools/PortMaster/gamecontrollerdb.txt
+NZ=$(tar -tf "$RZ/roms.tar" | wc -l)
+PZ="$T/romstz"; mkdir -p "$PZ"
+printf '<string name="Language" value="fr" />\r\n<string name="system.timezone" value="Europe/Paris" />\r\n<bool name="InvertButtons" value="false" />\r\n<string name="Sega Atomiswave.governor" value="performance" />\r\n' > "$PZ/es_settings.cfg"
+OUTZ=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+ESZ="$RZ/home/ark/.emulationstation/es_settings.cfg"
+expect "inject with time zone and A/B exits 0" test "$RC" = "0"
+expect "/etc/localtime -> the chosen zone"     test "$(readlink "$RZ/etc/localtime")" = /usr/share/zoneinfo/Europe/Paris
+expect "the zone is in .emulationstation.conf once, other lines kept" bash -c 'test "$(grep -c "^system.timezone=" "$1")" = 1 && grep -qx system.timezone=Europe/Paris "$1" && grep -qx kodi.enabled=1 "$1"' _ "$RZ/home/ark/.emulationstation.conf"
+expect "neither goes into es_settings.cfg"     bash -c '! grep -q "system.timezone\|InvertButtons" "$1"' _ "$ESZ"
+expect "A/B: b_swap.sh ran (JP: flag gone, a = enter)" bash -c 'test ! -e "$1/var/cache/Switch_AB" && grep -qx "a = enter" "$1/opt/inttools/keys.gptk" && grep -qx "x = x" "$1/opt/inttools/keys.gptk"' _ "$RZ"
+expect "the image's b_swap.sh is left as it was" cmp -s "$T/b_swap.orig" "$RZ/usr/local/bin/b_swap.sh"
+expect "PortMaster's file switched inside roms.tar" bash -c 'tar -xOf "$1" roms/tools/PortMaster/gamecontrollerdb.txt | grep -q "a:b1,b:b0,x:b2"' _ "$RZ/roms.tar"
+expect "roms.tar keeps one entry per file"     bash -c 'test "$(tar -tf "$1" | wc -l)" = "$2" && test "$(tar -tf "$1" | grep -c gamecontrollerdb)" = 1' _ "$RZ/roms.tar" "$NZ"
+expect "nothing written to the image's /opt/system/Tools" bash -c 'test -z "$(ls -A "$1/opt/system/Tools")"' _ "$RZ"
+expect "the log says what was done"            bash -c 'grep -q "time zone -> Europe/Paris" <<<"$1" && grep -q "A/B buttons -> JP (dArkOSen.s b_swap.sh; 1 file(s) of /roms/tools switched in roms.tar)" <<<"$1"' _ "$OUTZ"
+expect "other settings still merged (name with a space)" bash -c 'grep -qx "<string name=\"Language\" value=\"fr\" />" "$1" && grep -qx "<string name=\"Sega Atomiswave.governor\" value=\"performance\" />" "$1"' _ "$ESZ"
+expect "build stamp counts the 4 settings"     grep -qx DARKOSEN_EXTENDED_ES_SETTINGS=4 "$RZ/etc/dArkOSen-Extended.release"
+OUTZ2=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+expect "second run: already JP, nothing switched back" bash -c 'test "$2" = 0 && grep -q "A/B buttons -> already JP" <<<"$1" && grep -qx "a = enter" "$3"' _ "$OUTZ2" "$RC" "$RZ/opt/inttools/keys.gptk"
+expect "second run: still one zone line"       test "$(grep -c '^system.timezone=' "$RZ/home/ark/.emulationstation.conf")" = 1
+printf '<bool name="InvertButtons" value="true" />\n' > "$PZ/es_settings.cfg"
+bash "$INJECT" "$RZ" "" 10152026 "$PZ" >/dev/null 2>&1
+expect "InvertButtons true switches back to US" bash -c 'test -e "$1/var/cache/Switch_AB" && grep -qx "a = esc" "$1/opt/inttools/keys.gptk" && grep -q "name=\"InvertButtons\" value=\"true\"" "$1/home/ark/.emulationstation/es_settings.cfg" && tar -xOf "$1/roms.tar" roms/tools/PortMaster/gamecontrollerdb.txt | grep -q "a:b0,b:b1"' _ "$RZ"
+mv "$RZ/opt/inttools" "$T/inttools.real"; ln -s /tmp "$RZ/opt/inttools"            # a link that would lead out of the image
+printf '<bool name="InvertButtons" value="false" />\n' > "$PZ/es_settings.cfg"
+OUTZ4=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+expect "a symbolic link on b_swap.sh's paths stops the switch" bash -c 'test "$2" != 0 && grep -q "/opt/inttools in the image is a symbolic link" <<<"$1" && test -e "$3/var/cache/Switch_AB"' _ "$OUTZ4" "$RC" "$RZ"
+rm "$RZ/opt/inttools"; mv "$T/inttools.real" "$RZ/opt/inttools"
+printf '<string name="system.timezone" value="Mars/Olympus" />\n' > "$PZ/es_settings.cfg"
+OUTZ3=$(bash "$INJECT" "$RZ" "" 10152026 "$PZ" 2>&1); RC=$?
+expect "an unknown time zone stops the build"  bash -c 'test "$2" != 0 && grep -q "Mars/Olympus" <<<"$1"' _ "$OUTZ3" "$RC"
+printf '<string name="system.timezone" value="../../etc/passwd" />\n' > "$PZ/es_settings.cfg"
+bash "$INJECT" "$RZ" "" 10152026 "$PZ" >/dev/null 2>&1; RC=$?
+expect "a path outside zoneinfo is refused"    test "$RC" != 0
+
 echo "== grow-root.sh: more room on the root partition, EASYROMS moved along"
 GI="$T/grow.img"; S3=542720
 if command -v sfdisk >/dev/null && command -v jq >/dev/null && truncate -s 300M "$GI" \
