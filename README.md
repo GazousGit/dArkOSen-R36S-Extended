@@ -33,7 +33,7 @@ Issues and Pull Requests will be closed for the foreseeable future. dArkOSen is 
 
 dArkOSen is currently compatible with all genuine R36 devices.
 
-**_It is not compatible with any clones, including the G80CA and Soy Sauce models._**
+**_It is now compatible with many clones, including the G80CA and Soy Sauce models._**
 
   - all genuine R36S models
   - R36S Plus
@@ -41,7 +41,7 @@ dArkOSen is currently compatible with all genuine R36 devices.
   - R36H ProMax
   - R45H
   - R46H
-  - R40S
+  - R50H
 
 # HOW TO INSTALL:
 
